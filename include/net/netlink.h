@@ -794,7 +794,6 @@ static inline int nla_put_u32(struct sk_buff *skb, int attrtype, u32 value)
 }
 
 /**
- * nla_put_64 - Add a u64 netlink attribute to a socket buffer
  * nla_put_be32 - Add a __be32 netlink attribute to a socket buffer
  * @skb: socket buffer to add attribute to
  * @attrtype: attribute type
@@ -806,7 +805,7 @@ static inline int nla_put_be32(struct sk_buff *skb, int attrtype, __be32 value)
 }
 
 /**
- * nla_put_64 - Add a u64 netlink attribute to a socket buffer
+ * nla_put_u64 - Add a u64 netlink attribute to a socket buffer
  * @skb: socket buffer to add attribute to
  * @attrtype: attribute type
  * @value: numeric value
@@ -825,6 +824,50 @@ static inline int nla_put_u64(struct sk_buff *skb, int attrtype, u64 value)
 static inline int nla_put_be64(struct sk_buff *skb, int attrtype, __be64 value)
 {
 	return nla_put(skb, attrtype, sizeof(__be64), &value);
+}
+
+/**
+ * nla_put_s8 - Add a s8 netlink attribute to a socket buffer
+ * @skb: socket buffer to add attribute to
+ * @attrtype: attribute type
+ * @value: numeric value
+ */
+static inline int nla_put_s8(struct sk_buff *skb, int attrtype, s8 value)
+{
+	return nla_put(skb, attrtype, sizeof(s8), &value);
+}
+
+/**
+ * nla_put_s16 - Add a s16 netlink attribute to a socket buffer
+ * @skb: socket buffer to add attribute to
+ * @attrtype: attribute type
+ * @value: numeric value
+ */
+static inline int nla_put_s16(struct sk_buff *skb, int attrtype, s16 value)
+{
+	return nla_put(skb, attrtype, sizeof(s16), &value);
+}
+
+/**
+ * nla_put_s32 - Add a s32 netlink attribute to a socket buffer
+ * @skb: socket buffer to add attribute to
+ * @attrtype: attribute type
+ * @value: numeric value
+ */
+static inline int nla_put_s32(struct sk_buff *skb, int attrtype, s32 value)
+{
+	return nla_put(skb, attrtype, sizeof(s32), &value);
+}
+
+/**
+ * nla_put_s64 - Add a s64 netlink attribute to a socket buffer
+ * @skb: socket buffer to add attribute to
+ * @attrtype: attribute type
+ * @value: numeric value
+ */
+static inline int nla_put_s64(struct sk_buff *skb, int attrtype, s64 value)
+{
+	return nla_put(skb, attrtype, sizeof(s64), &value);
 }
 
 /**
