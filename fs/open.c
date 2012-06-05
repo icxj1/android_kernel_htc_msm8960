@@ -813,7 +813,7 @@ EXPORT_SYMBOL_GPL(lookup_instantiate_filp);
 
 /**
  * finish_open - finish opening a file
- * @file: file pointer
+ * @od: opaque open data
  * @dentry: pointer to dentry
  * @open: open callback
  *
@@ -822,19 +822,36 @@ EXPORT_SYMBOL_GPL(lookup_instantiate_filp);
  * If the open callback is set to NULL, then the standard f_op->open()
  * filesystem callback is substituted.
  */
-int finish_open(struct file *file, struct dentry *dentry,
-		int (*open)(struct inode *, struct file *))
+struct file *finish_open(struct opendata *od, struct dentry *dentry,
+			 int (*open)(struct inode *, struct file *))
 {
 	struct file *res;
 
-	res = do_dentry_open(dentry, file->f_path.mnt, file, open, current_cred());
-	if (!IS_ERR(res)) {
-		return 0;
-	}
+	mntget(od->mnt);
+	dget(dentry);
 
-	return PTR_ERR(res);
+	res = do_dentry_open(dentry, od->mnt, *od->filp, open, current_cred());
+	if (!IS_ERR(res))
+		*od->filp = NULL;
+
+	return res;
 }
 EXPORT_SYMBOL(finish_open);
+
+/**
+ * finish_no_open - finish ->atomic_open() without opening the file
+ *
+ * @od: opaque open data
+ * @dentry: dentry or NULL (as returned from ->lookup())
+ *
+ * This can be used to set the result of a successful lookup in ->atomic_open().
+ * The filesystem's atomic_open() method shall return NULL after calling this.
+ */
+void finish_no_open(struct opendata *od, struct dentry *dentry)
+{
+	od->dentry = dentry;
+}
+EXPORT_SYMBOL(finish_no_open);
 
 /**
  * nameidata_to_filp - convert a nameidata to an open filp.

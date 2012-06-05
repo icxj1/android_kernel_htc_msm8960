@@ -447,6 +447,7 @@ struct kstatfs;
 struct vm_area_struct;
 struct vfsmount;
 struct cred;
+struct opendata;
 struct fscrypt_info;
 struct fscrypt_operations;
 
@@ -1716,6 +1717,9 @@ struct inode_operations {
 		      u64 len);
 	int (*update_time)(struct inode *, struct timespec *, int);
         int (*tmpfile) (struct inode *, struct dentry *, umode_t);
+	struct file * (*atomic_open)(struct inode *, struct dentry *,
+				     struct opendata *, unsigned open_flag,
+				     umode_t create_mode, bool *created);
 } ____cacheline_aligned;
 
 struct seq_file;
@@ -2105,6 +2109,9 @@ extern int filp_close(struct file *, fl_owner_t id);
 extern char * getname(const char __user *);
 extern int finish_open(struct file *file, struct dentry *dentry,
 			int (*open)(struct inode *, struct file *));
+extern struct file *finish_open(struct opendata *od, struct dentry *dentry,
+				int (*open)(struct inode *, struct file *));
+extern void finish_no_open(struct opendata *od, struct dentry *dentry);
 
 /* fs/ioctl.c */
 
