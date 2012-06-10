@@ -361,7 +361,7 @@ int fuse_lookup_name(struct super_block *sb, u64 nodeid, struct qstr *name,
 }
 
 static struct dentry *fuse_lookup(struct inode *dir, struct dentry *entry,
-				  struct nameidata *nd)
+				  unsigned int flags)
 {
 	int err;
 	struct fuse_entry_out outarg;
@@ -514,6 +514,44 @@ static int fuse_create_open(struct inode *dir, struct dentry *entry,
 	fuse_put_request(fc, req);
  out_put_forget_req:
 	kfree(forget);
+out_err:
+	return err;
+}
+
+static int fuse_mknod(struct inode *, struct dentry *, umode_t, dev_t);
+static int fuse_atomic_open(struct inode *dir, struct dentry *entry,
+			    struct file *file, unsigned flags,
+			    umode_t mode, int *opened)
+{
+	int err;
+	struct fuse_conn *fc = get_fuse_conn(dir);
+	struct dentry *res = NULL;
+
+	if (d_unhashed(entry)) {
+		res = fuse_lookup(dir, entry, 0);
+		if (IS_ERR(res))
+			return PTR_ERR(res);
+
+		if (res)
+			entry = res;
+	}
+
+	if (!(flags & O_CREAT) || entry->d_inode)
+		goto no_open;
+
+	/* Only creates */
+	*opened |= FILE_CREATED;
+
+	if (fc->no_create)
+		goto mknod;
+
+	err = fuse_create_open(dir, entry, file, flags, mode, opened);
+	if (err == -ENOSYS) {
+		fc->no_create = 1;
+		goto mknod;
+	}
+out_dput:
+	dput(res);
 	return err;
 }
 

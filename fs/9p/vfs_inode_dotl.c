@@ -268,6 +268,20 @@ v9fs_vfs_create_dotl(struct inode *dir, struct dentry *dentry, umode_t omode,
 	struct p9_fid *dfid, *ofid, *inode_fid;
 	struct v9fs_session_info *v9ses;
 	struct posix_acl *pacl = NULL, *dacl = NULL;
+	struct dentry *res = NULL;
+
+	if (d_unhashed(dentry)) {
+		res = v9fs_vfs_lookup(dir, dentry, 0);
+		if (IS_ERR(res))
+			return PTR_ERR(res);
+
+		if (res)
+			dentry = res;
+	}
+
+	/* Only creates */
+	if (!(flags & O_CREAT) || dentry->d_inode)
+		return finish_no_open(file, res);
 
 	v9ses = v9fs_inode2v9ses(dir);
 	if (nd)

@@ -336,6 +336,71 @@ cifs_create_set_dentry:
 			CIFSSMBClose(xid, tcon, fileHandle);
 			goto cifs_create_out;
 		}
+out:
+	kfree(buf);
+	kfree(full_path);
+	return rc;
+}
+
+int
+cifs_atomic_open(struct inode *inode, struct dentry *direntry,
+		 struct file *file, unsigned oflags, umode_t mode,
+		 int *opened)
+{
+	int rc;
+	int xid;
+	struct tcon_link *tlink;
+	struct cifs_tcon *tcon;
+	__u16 fileHandle;
+	__u32 oplock;
+	struct file *filp;
+	struct cifsFileInfo *pfile_info;
+
+	/* Posix open is only called (at lookup time) for file create now.  For
+	 * opens (rather than creates), because we do not know if it is a file
+	 * or directory yet, and current Samba no longer allows us to do posix
+	 * open on dirs, we could end up wasting an open call on what turns out
+	 * to be a dir. For file opens, we wait to call posix open till
+	 * cifs_open.  It could be added to atomic_open in the future but the
+	 * performance tradeoff of the extra network request when EISDIR or
+	 * EACCES is returned would have to be weighed against the 50% reduction
+	 * in network traffic in the other paths.
+	 */
+	if (!(oflags & O_CREAT)) {
+		struct dentry *res = cifs_lookup(inode, direntry, 0);
+		if (IS_ERR(res))
+			return PTR_ERR(res);
+
+		return finish_no_open(file, res);
+	}
+
+	rc = check_name(direntry);
+	if (rc)
+		return rc;
+
+	xid = GetXid();
+
+	cFYI(1, "parent inode = 0x%p name is: %s and dentry = 0x%p",
+	     inode, direntry->d_name.name, direntry);
+
+	tlink = cifs_sb_tlink(CIFS_SB(inode->i_sb));
+	filp = ERR_CAST(tlink);
+	if (IS_ERR(tlink))
+		goto free_xid;
+
+	tcon = tlink_tcon(tlink);
+
+	rc = cifs_do_create(inode, direntry, xid, tlink, oflags, mode,
+			    &oplock, &fileHandle, opened);
+
+	if (rc)
+		goto out;
+
+	rc = finish_open(file, direntry, generic_file_open, opened);
+	if (rc) {
+		CIFSSMBClose(xid, tcon, fileHandle);
+		goto out;
+	}
 
 		pfile_info = cifs_new_fileinfo(fileHandle, filp, tlink, oplock);
 		if (pfile_info == NULL) {
@@ -488,7 +553,7 @@ mknod_out:
 
 struct dentry *
 cifs_lookup(struct inode *parent_dir_inode, struct dentry *direntry,
-	    struct nameidata *nd)
+	    unsigned int flags)
 {
 	int xid;
 	int rc = 0; /* to get around spurious gcc warning, set to zero here */
