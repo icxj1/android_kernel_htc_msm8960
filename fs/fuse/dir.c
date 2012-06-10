@@ -523,7 +523,7 @@ static int fuse_atomic_open(struct inode *dir, struct dentry *entry,
 	struct dentry *res = NULL;
 
 	if (d_unhashed(entry)) {
-		res = fuse_lookup(dir, entry, NULL);
+		res = fuse_lookup(dir, entry, 0);
 		if (IS_ERR(res))
 			return PTR_ERR(res);
 

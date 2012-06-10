@@ -407,7 +407,7 @@ cifs_atomic_open(struct inode *inode, struct dentry *direntry,
 	 * in network traffic in the other paths.
 	 */
 	if (!(oflags & O_CREAT)) {
-		struct dentry *res = cifs_lookup(inode, direntry, NULL);
+		struct dentry *res = cifs_lookup(inode, direntry, 0);
 		if (IS_ERR(res))
 			return PTR_ERR(res);
 

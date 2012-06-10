@@ -1268,7 +1268,7 @@ static struct dentry *nfs_lookup(struct inode *dir, struct dentry * dentry, unsi
 	 * If we're doing an exclusive create, optimize away the lookup
 	 * but don't hash the dentry.
 	 */
-	if (nd && nfs_is_exclusive_create(dir, nd->flags)) {
+	if (nfs_is_exclusive_create(dir, flags)) {
 		d_instantiate(dentry, NULL);
 		res = NULL;
 		goto out;
@@ -1456,7 +1456,7 @@ out:
 	return err;
 
 no_open:
-	res = nfs_lookup(dir, dentry, NULL);
+	res = nfs_lookup(dir, dentry, 0);
 	err = PTR_ERR(res);
 	if (IS_ERR(res))
 		goto out;

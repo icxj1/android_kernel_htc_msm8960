@@ -653,7 +653,7 @@ int ceph_atomic_open(struct inode *dir, struct dentry *dentry,
 	}
 
 	if (d_unhashed(dentry)) {
-		res = ceph_lookup(dir, dentry, NULL);
+		res = ceph_lookup(dir, dentry, 0);
 		if (IS_ERR(res))
 			return PTR_ERR(res);
 
