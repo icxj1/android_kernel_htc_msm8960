@@ -384,66 +384,6 @@ out:
 
 int
 cifs_atomic_open(struct inode *inode, struct dentry *direntry,
-		 struct file *file, unsigned oflags, umode_t mode,
-		 int *opened)
-{
-	int rc;
-	int xid;
-	struct tcon_link *tlink;
-	struct cifs_tcon *tcon;
-	__u16 fileHandle;
-	__u32 oplock;
-	struct file *filp;
-	struct cifsFileInfo *pfile_info;
-
-	/* Posix open is only called (at lookup time) for file create now.  For
-	 * opens (rather than creates), because we do not know if it is a file
-	 * or directory yet, and current Samba no longer allows us to do posix
-	 * open on dirs, we could end up wasting an open call on what turns out
-	 * to be a dir. For file opens, we wait to call posix open till
-	 * cifs_open.  It could be added to atomic_open in the future but the
-	 * performance tradeoff of the extra network request when EISDIR or
-	 * EACCES is returned would have to be weighed against the 50% reduction
-	 * in network traffic in the other paths.
-	 */
-	if (!(oflags & O_CREAT)) {
-		struct dentry *res = cifs_lookup(inode, direntry, 0);
-		if (IS_ERR(res))
-			return PTR_ERR(res);
-
-		return finish_no_open(file, res);
-	}
-
-	rc = check_name(direntry);
-	if (rc)
-		return rc;
-
-	xid = GetXid();
-
-	cFYI(1, "parent inode = 0x%p name is: %s and dentry = 0x%p",
-	     inode, direntry->d_name.name, direntry);
-
-	tlink = cifs_sb_tlink(CIFS_SB(inode->i_sb));
-	filp = ERR_CAST(tlink);
-	if (IS_ERR(tlink))
-		goto free_xid;
-
-	tcon = tlink_tcon(tlink);
-
-	rc = cifs_do_create(inode, direntry, xid, tlink, oflags, mode,
-			    &oplock, &fileHandle, opened);
-
-	if (rc)
-		goto out;
-
-	rc = finish_open(file, direntry, generic_file_open, opened);
-	if (rc) {
-		CIFSSMBClose(xid, tcon, fileHandle);
-		goto out;
-	}
-
-struct file *
-cifs_atomic_open(struct inode *inode, struct dentry *direntry,
 		 struct opendata *od, unsigned oflags, umode_t mode,
 		 int *opened)
 {
@@ -469,15 +409,15 @@ cifs_atomic_open(struct inode *inode, struct dentry *direntry,
 	if (!(oflags & O_CREAT)) {
 		struct dentry *res = cifs_lookup(inode, direntry, NULL);
 		if (IS_ERR(res))
-			return ERR_CAST(res);
+			return PTR_ERR(res);
 
 		finish_no_open(od, res);
-		return NULL;
+		return 1;
 	}
 
 	rc = check_name(direntry);
 	if (rc)
-		return ERR_PTR(rc);
+		return rc;
 
 	xid = GetXid();
 
@@ -494,13 +434,12 @@ cifs_atomic_open(struct inode *inode, struct dentry *direntry,
 	rc = cifs_do_create(inode, direntry, xid, tlink, oflags, mode,
 			    &oplock, &fileHandle, opened);
 
-	if (rc) {
-		filp = ERR_PTR(rc);
+	if (rc)
 		goto out;
-	}
 
 	filp = finish_open(od, direntry, generic_file_open, opened);
 	if (IS_ERR(filp)) {
+		rc = PTR_ERR(filp);
 		CIFSSMBClose(xid, tcon, fileHandle);
 		goto out;
 	}
@@ -509,14 +448,14 @@ cifs_atomic_open(struct inode *inode, struct dentry *direntry,
 	if (pfile_info == NULL) {
 		CIFSSMBClose(xid, tcon, fileHandle);
 		fput(filp);
-		filp = ERR_PTR(-ENOMEM);
+		rc = -ENOMEM;
 	}
 
 out:
 	cifs_put_tlink(tlink);
 free_xid:
 	FreeXid(xid);
-	return filp;
+	return rc;
 }
 
 int cifs_create(struct inode *inode, struct dentry *direntry, umode_t mode,
