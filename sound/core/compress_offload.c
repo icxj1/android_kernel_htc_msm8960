@@ -412,10 +412,6 @@ static int snd_compr_allocate_buffer(struct snd_compr_stream *stream,
 	unsigned int buffer_size;
 	void *buffer;
 
-	if (params->buffer.fragment_size == 0 ||
-	    params->buffer.fragments > SIZE_MAX / params->buffer.fragment_size)
-		return -EINVAL;
-
 	buffer_size = params->buffer.fragment_size * params->buffer.fragments;
 	if (stream->ops->copy) {
 		buffer = NULL;
@@ -438,7 +434,7 @@ static int snd_compress_check_input(struct snd_compr_params *params)
 {
 	/* first let's check the buffer parameter's */
 	if (params->buffer.fragment_size == 0 ||
-	    params->buffer.fragments > INT_MAX / params->buffer.fragment_size)
+			params->buffer.fragments > SIZE_MAX / params->buffer.fragment_size)
 		return -EINVAL;
 
 	return 0;
