@@ -29,7 +29,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/android_pmem.h>
 #include <sound/pcm_params.h>
-
 #include "msm-pcm-q6.h"
 #include "msm-pcm-routing.h"
 
