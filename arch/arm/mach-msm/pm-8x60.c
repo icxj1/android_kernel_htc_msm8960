@@ -38,6 +38,8 @@
 #define CREATE_TRACE_POINTS
 #include <mach/trace_msm_low_power.h>
 #include <mach/msm-krait-l2-accessors.h>
+#include <mach/msm_bus.h>
+#include <mach/mpm.h>
 #include <asm/cacheflush.h>
 #include <asm/hardware/gic.h>
 #include <asm/pgtable.h>
@@ -1127,6 +1129,53 @@ void msm_pm_set_sleep_ops(struct msm_pm_sleep_ops *ops)
 {
 	if (ops)
 		pm_sleep_ops = *ops;
+}
+
+static int msm_suspend_prepare(void)
+{
+	msm_mpm_suspend_prepare();
+	return 0;
+}
+
+static void msm_suspend_wake(void)
+{
+	msm_mpm_suspend_wake();
+}
+
+static const struct platform_suspend_ops msm_pm_ops = {
+	.enter = msm_pm_enter,
+	.valid = suspend_valid_only_mem,
+	.prepare_late = msm_suspend_prepare,
+	.wake = msm_suspend_wake,
+};
+
+static int __devinit msm_pm_snoc_client_probe(struct platform_device *pdev)
+{
+	int rc = 0;
+	static struct msm_bus_scale_pdata *msm_pm_bus_pdata;
+	static uint32_t msm_pm_bus_client;
+
+	msm_pm_bus_pdata = msm_bus_cl_get_pdata(pdev);
+
+	if (msm_pm_bus_pdata) {
+		msm_pm_bus_client =
+			msm_bus_scale_register_client(msm_pm_bus_pdata);
+
+		if (!msm_pm_bus_client) {
+			pr_err("%s: Failed to register SNOC client",
+							__func__);
+			rc = -ENXIO;
+			goto snoc_cl_probe_done;
+		}
+
+		rc = msm_bus_scale_client_update_request(msm_pm_bus_client, 1);
+
+		if (rc)
+			pr_err("%s: Error setting bus rate", __func__);
+	}
+
+snoc_cl_probe_done:
+	return rc;
 }
 
 static int __devinit msm_cpu_status_probe(struct platform_device *pdev)
