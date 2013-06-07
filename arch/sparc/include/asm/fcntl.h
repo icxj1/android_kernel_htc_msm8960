@@ -35,7 +35,11 @@
 #define O_SYNC		(__O_SYNC|O_DSYNC)
 
 #define O_PATH		0x1000000
+<<<<<<< HEAD
 #define __O_TMPFILE	0x2000000
+=======
+#define O_TMPFILE	0x2000000
+>>>>>>> f05a16e8f57... [O_TMPFILE] it's still short a few helpers, but infrastructure should be OK now...
 
 #define F_GETOWN	5	/*  for sockets. */
 #define F_SETOWN	6	/*  for sockets. */

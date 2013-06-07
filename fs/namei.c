@@ -2972,15 +2972,15 @@ stale_open:
 	goto retry_lookup;
 }
 
-static int do_tmpfile(int dfd, const char* pathname,
+static int do_tmpfile(int dfd, struct filename *pathname,
 		struct nameidata *nd, int flags,
 		const struct open_flags *op,
-		struct file *file)
+		struct file *file, int *opened)
 {
-	static const struct qstr name = { .len = 1, .name = "/" };
+	static const struct qstr name = QSTR_INIT("/", 1);
 	struct dentry *dentry, *child;
 	struct inode *dir;
-	int error = path_lookupat(dfd, pathname,
+	int error = path_lookupat(dfd, pathname->name,
 				  flags | LOOKUP_DIRECTORY, nd);
 	if (unlikely(error))
 		return error;
@@ -3009,24 +3009,18 @@ static int do_tmpfile(int dfd, const char* pathname,
 	error = dir->i_op->tmpfile(dir, nd->path.dentry, op->mode);
 	if (error)
 		goto out2;
-	audit_inode(pathname, nd->path.dentry);
-	/* Don't check for other permissions, the inode was just created */
-	error = may_open(&nd->path, MAY_OPEN, op->open_flag);
+
+	audit_inode(pathname->name, nd->path.dentry);
+	error = may_open(&nd->path, op->acc_mode, op->open_flag);
 	if (error)
 		goto out2;
 	file->f_path.mnt = nd->path.mnt;
-	error = finish_open(file, nd->path.dentry, NULL);
+	error = finish_open(file, nd->path.dentry, NULL, opened);
 	if (error)
 		goto out2;
 	error = open_check_o_direct(file);
-	if (error) {
+	if (error)
 		fput(file);
-	} else if (!(op->open_flag & O_EXCL)) {
-		struct inode *inode = file->f_path.dentry->d_inode;
-		spin_lock(&inode->i_lock);
-		inode->i_state |= I_LINKABLE;
-		spin_unlock(&inode->i_lock);
-	}
 out2:
 	mnt_drop_write(nd->path.mnt);
 out:
@@ -3049,9 +3043,9 @@ static struct file *path_openat(int dfd, struct filename *pathname,
 
 	file->f_flags = op->open_flag;
 
-	if (unlikely(filp->f_flags & __O_TMPFILE)) {
-		error = do_tmpfile(dfd, pathname, nd, flags, op, filp);
-		goto out2;
+	if (unlikely(file->f_flags & O_TMPFILE)) {
+		error = do_tmpfile(dfd, pathname, nd, flags, op, file, &opened);
+		goto out;
 	}
 
 	error = path_init(dfd, pathname->name, flags | LOOKUP_PARENT, nd, &base);
