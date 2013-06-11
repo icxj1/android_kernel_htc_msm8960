@@ -3019,8 +3019,14 @@ static int do_tmpfile(int dfd, struct filename *pathname,
 	if (error)
 		goto out2;
 	error = open_check_o_direct(file);
-	if (error)
+	if (error) {
 		fput(file);
+	} else if (!(op->open_flag & O_EXCL)) {
+		struct inode *inode = file->f_path.dentry->d_inode;
+		spin_lock(&inode->i_lock);
+		inode->i_state |= I_LINKABLE;
+		spin_unlock(&inode->i_lock);
+	}
 out2:
 	mnt_drop_write(nd->path.mnt);
 out:
