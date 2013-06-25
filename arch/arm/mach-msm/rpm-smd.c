@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -59,9 +59,13 @@ struct msm_rpm_driver_data {
 	spinlock_t smd_lock_write;
 	spinlock_t smd_lock_read;
 	struct completion smd_open;
+	struct completion remote_open;
 };
 
 #define DEFAULT_BUFFER_SIZE 256
+#define DEBUG_PRINT_BUFFER_SIZE 512
+#define MAX_SLEEP_BUFFER 128
+#define SMD_CHANNEL_NOTIF_TIMEOUT 5000
 #define GFP_FLAG(noirq) (noirq ? GFP_ATOMIC : GFP_KERNEL)
 #define INV_RSC "resource does not exist"
 #define ERR "err\0"
@@ -1249,15 +1253,19 @@ void msm_rpm_exit_sleep(void)
 }
 EXPORT_SYMBOL(msm_rpm_exit_sleep);
 
-static bool msm_rpm_set_standalone(void)
+static int __devinit msm_rpm_smd_remote_probe(struct platform_device *pdev)
 {
-	if (machine_is_msm8974()) {
-		pr_warn("%s(): Running in standalone mode, requests "
-				"will not be sent to RPM\n", __func__);
-		standalone = true;
-	}
-	return standalone;
+	if (pdev && pdev->id == msm_rpm_data.ch_type)
+		complete(&msm_rpm_data.remote_open);
+	return 0;
 }
+
+static struct platform_driver msm_rpm_smd_remote_driver = {
+	.probe = msm_rpm_smd_remote_probe,
+	.driver = {
+		.owner = THIS_MODULE,
+	},
+};
 
 static int __devinit msm_rpm_dev_probe(struct platform_device *pdev)
 {
@@ -1276,20 +1284,36 @@ static int __devinit msm_rpm_dev_probe(struct platform_device *pdev)
 	if (ret)
 		goto fail;
 
+	key = "rpm-standalone";
+	standalone = of_property_read_bool(pdev->dev.of_node, key);
+
+	msm_rpm_smd_remote_driver.driver.name = msm_rpm_data.ch_name;
+	init_completion(&msm_rpm_data.remote_open);
 	init_completion(&msm_rpm_data.smd_open);
 	spin_lock_init(&msm_rpm_data.smd_lock_write);
 	spin_lock_init(&msm_rpm_data.smd_lock_read);
 	INIT_WORK(&msm_rpm_data.work, msm_rpm_smd_work);
 
-	if (smd_named_open_on_edge(msm_rpm_data.ch_name, msm_rpm_data.ch_type,
-				&msm_rpm_data.ch_info, &msm_rpm_data,
+	platform_driver_register(&msm_rpm_smd_remote_driver);
+	ret = wait_for_completion_timeout(&msm_rpm_data.remote_open,
+			msecs_to_jiffies(SMD_CHANNEL_NOTIF_TIMEOUT));
+
+	if (!ret || smd_named_open_on_edge(msm_rpm_data.ch_name,
+				msm_rpm_data.ch_type,
+				&msm_rpm_data.ch_info,
+				&msm_rpm_data,
 				msm_rpm_notify)) {
 		pr_info("Cannot open RPM channel %s %d\n", msm_rpm_data.ch_name,
 				msm_rpm_data.ch_type);
 
-		msm_rpm_set_standalone();
 		BUG_ON(!standalone);
 		complete(&msm_rpm_data.smd_open);
+	} else {
+		/*
+		 * Override DT's suggestion to try standalone; since we have an
+		 * SMD channel.
+		 */
+		standalone = false;
 	}
 
 	wait_for_completion(&msm_rpm_data.smd_open);
@@ -1304,6 +1328,10 @@ static int __devinit msm_rpm_dev_probe(struct platform_device *pdev)
 	}
 
 	of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev);
+
+	if (standalone)
+		pr_info("%s(): RPM running in standalone mode\n", __func__);
+
 	return 0;
 fail:
 	pr_err("%s(): Failed to read node: %s, key=%s\n", __func__,
