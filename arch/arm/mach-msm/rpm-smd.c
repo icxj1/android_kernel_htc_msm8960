@@ -924,9 +924,14 @@ EXPORT_SYMBOL(msm_rpm_send_message_noirq);
  * During power collapse, the rpm driver disables the SMD interrupts to make
  * sure that the interrupt doesn't wakes us from sleep.
  */
-int msm_rpm_enter_sleep(void)
+int msm_rpm_enter_sleep(bool print, const struct cpumask *cpumask)
 {
-	return smd_mask_receive_interrupt(msm_rpm_data.ch_info, true);
+	if (standalone)
+		return 0;
+
+	msm_rpm_flush_requests(print);
+
+	return smd_mask_receive_interrupt(msm_rpm_data.ch_info, true, cpumask);
 }
 EXPORT_SYMBOL(msm_rpm_enter_sleep);
 
@@ -936,7 +941,10 @@ EXPORT_SYMBOL(msm_rpm_enter_sleep);
  */
 void msm_rpm_exit_sleep(void)
 {
-	smd_mask_receive_interrupt(msm_rpm_data.ch_info, false);
+	if (standalone)
+		return;
+
+	smd_mask_receive_interrupt(msm_rpm_data.ch_info, false, NULL);
 }
 EXPORT_SYMBOL(msm_rpm_exit_sleep);
 

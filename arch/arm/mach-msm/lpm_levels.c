@@ -60,6 +60,44 @@ static void msm_lpm_exit_sleep(void *limits, bool from_idle,
 	msm_rpm_exit_sleep();
 	msm_lpmrs_exit_sleep((struct msm_rpmrs_limits *)limits,
 				from_idle, notify_rpm, collapsed);
+	int lpm = sleep_mode;
+	int rc = 0;
+
+	if (system_state->no_l2_saw)
+		goto bail_set_l2_mode;
+
+	msm_pm_set_l2_flush_flag(MSM_SCM_L2_ON);
+
+	switch (sleep_mode) {
+	case MSM_SPM_L2_MODE_POWER_COLLAPSE:
+		pr_info("Configuring for L2 power collapse\n");
+		msm_pm_set_l2_flush_flag(MSM_SCM_L2_OFF);
+		break;
+	case MSM_SPM_L2_MODE_GDHS:
+		msm_pm_set_l2_flush_flag(MSM_SCM_L2_GDHS);
+		break;
+	case MSM_SPM_L2_MODE_PC_NO_RPM:
+		msm_pm_set_l2_flush_flag(MSM_SCM_L2_OFF);
+		break;
+	case MSM_SPM_L2_MODE_RETENTION:
+	case MSM_SPM_L2_MODE_DISABLED:
+		break;
+	default:
+		lpm = MSM_SPM_L2_MODE_DISABLED;
+		break;
+	}
+
+	rc = msm_spm_l2_set_low_power_mode(lpm, true);
+
+	if (rc) {
+		if (rc == -ENXIO)
+			WARN_ON_ONCE(1);
+		else
+			pr_err("%s: Failed to set L2 low power mode %d, ERR %d",
+					__func__, lpm, rc);
+	}
+bail_set_l2_mode:
+	return rc;
 }
 
 void msm_lpm_show_resources(void)
@@ -87,6 +125,74 @@ s32 msm_cpuidle_get_deep_idle_latency(void)
 		/* Find the lowest latency for power collapse */
 		if (level->latency_us < best->latency_us)
 			best = level;
+
+		if ((sleep_us >> 10) > pwr_param->time_overhead_us) {
+			pwr = pwr_param->ss_power;
+		} else {
+			pwr = pwr_param->ss_power;
+			pwr -= (pwr_param->time_overhead_us
+					* pwr_param->ss_power) / sleep_us;
+			pwr += pwr_param->energy_overhead / sleep_us;
+		}
+
+		if (best_level_pwr >= pwr) {
+			best_level = i;
+			best_level_pwr = pwr;
+		}
+	}
+	return best_level;
+}
+
+static void lpm_system_prepare(struct lpm_system_state *system_state,
+		int index, bool from_idle)
+{
+	struct lpm_system_level *lvl;
+	struct clock_event_device *bc = tick_get_broadcast_device()->evtdev;
+	uint32_t sclk;
+	int64_t us = (~0ULL);
+	int dbg_mask;
+	int ret;
+	const struct cpumask *nextcpu;
+
+	spin_lock(&system_state->sync_lock);
+	if (num_powered_cores != system_state->num_cores_in_sync) {
+		spin_unlock(&system_state->sync_lock);
+		return;
+	}
+
+	if (from_idle) {
+		dbg_mask = lpm_lvl_dbg_msk & MSM_LPM_LVL_DBG_IDLE_LIMITS;
+		us = ktime_to_us(ktime_sub(bc->next_event, ktime_get()));
+		nextcpu = bc->cpumask;
+	} else {
+		dbg_mask = lpm_lvl_dbg_msk & MSM_LPM_LVL_DBG_SUSPEND_LIMITS;
+		nextcpu = cpumask_of(smp_processor_id());
+	}
+
+	lvl = &system_state->system_level[index];
+
+	ret = lpm_set_l2_mode(system_state, lvl->l2_mode);
+
+	if (ret && ret != -ENXIO) {
+		pr_warn("%s(): Cannot set L2 Mode %d, ret:%d\n",
+				__func__, lvl->l2_mode, ret);
+		goto bail_system_sleep;
+	}
+
+	if (lvl->notify_rpm) {
+		ret = msm_rpm_enter_sleep(dbg_mask, nextcpu);
+		if (ret) {
+			pr_err("rpm_enter_sleep() failed with rc = %d\n", ret);
+			goto bail_system_sleep;
+		}
+
+
+		if (!from_idle)
+			us = USEC_PER_SEC * msm_pm_sleep_time_override;
+
+		do_div(us, USEC_PER_SEC/SCLK_HZ);
+		sclk = (uint32_t)us;
+		msm_mpm_enter_sleep(sclk, from_idle, nextcpu);
 	}
 	return best->latency_us - 1;
 }
