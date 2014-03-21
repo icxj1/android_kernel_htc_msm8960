@@ -1549,9 +1549,9 @@ static int attach_recursive_mnt(struct mount *source_mnt,
 		if (err)
 			goto out;
 		err = propagate_mnt(dest_mnt, dest_dentry, source_mnt, &tree_list);
-		br_write_lock(&vfsmount_lock);
 		if (err)
 			goto out_cleanup_ids;
+		br_write_lock(&vfsmount_lock);
 		for (p = source_mnt; p; p = next_mnt(p, source_mnt))
 			set_mnt_shared(p);
 	} else {
