@@ -250,7 +250,7 @@ static void vmpressure_work_fn(struct work_struct *work)
 	} while ((vmpr = vmpressure_parent(vmpr)));
 }
 
-void vmpressure(gfp_t gfp, struct mem_cgroup *memcg,
+void vmpressure_memcg(gfp_t gfp, struct mem_cgroup *memcg,
 		unsigned long scanned, unsigned long reclaimed)
 {
 	struct vmpressure *vmpr = memcg_to_vmpressure(memcg);
@@ -329,6 +329,9 @@ void vmpressure_global(gfp_t gfp, unsigned long scanned,
 
 	pressure = vmpressure_calc_pressure(scanned, reclaimed);
 	pressure = vmpressure_account_stall(pressure, stall, scanned);
+	mutex_unlock(&vmpr->sr_lock);
+
+	pressure = vmpressure_calc_pressure(scanned, reclaimed);
 	vmpressure_notify(pressure);
 }
 
