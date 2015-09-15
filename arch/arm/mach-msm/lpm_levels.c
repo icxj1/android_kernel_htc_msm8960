@@ -25,7 +25,113 @@
 static struct msm_rpmrs_level *msm_lpm_levels;
 static int msm_lpm_level_count;
 
-static void msm_lpm_level_update(void)
+enum {
+	MSM_LPM_LVL_DBG_SUSPEND_LIMITS = BIT(0),
+	MSM_LPM_LVL_DBG_IDLE_LIMITS = BIT(1),
+};
+
+struct power_params {
+	uint32_t latency_us;
+	uint32_t ss_power;
+	uint32_t energy_overhead;
+	uint32_t time_overhead_us;
+	uint32_t target_residency_us;
+};
+
+struct lpm_cpu_level {
+	const char *name;
+	enum msm_pm_sleep_mode mode;
+	struct power_params pwr;
+	bool use_bc_timer;
+	bool sync;
+};
+
+struct lpm_system_level {
+	const char *name;
+	uint32_t l2_mode;
+	struct power_params pwr;
+	enum msm_pm_sleep_mode min_cpu_mode;
+	int num_cpu_votes;
+	bool notify_rpm;
+	bool available;
+	bool sync;
+};
+
+struct lpm_system_state {
+	struct lpm_cpu_level *cpu_level;
+	int num_cpu_levels;
+	struct lpm_system_level *system_level;
+	int num_system_levels;
+	enum msm_pm_sleep_mode sync_cpu_mode;
+	int last_entered_cluster_index;
+	bool allow_synched_levels;
+	bool no_l2_saw;
+	struct spinlock sync_lock;
+	int num_cores_in_sync;
+};
+
+static struct lpm_system_state sys_state;
+static bool suspend_in_progress;
+static int64_t suspend_time;
+
+struct lpm_lookup_table {
+	uint32_t modes;
+	const char *mode_name;
+};
+
+static void lpm_system_level_update(void);
+static void setup_broadcast_timer(void *arg);
+static int lpm_cpu_callback(struct notifier_block *cpu_nb,
+				unsigned long action, void *hcpu);
+
+static struct notifier_block __refdata lpm_cpu_nblk = {
+	.notifier_call = lpm_cpu_callback,
+};
+
+static uint32_t allowed_l2_mode;
+static uint32_t sysfs_dbg_l2_mode __refdata = MSM_SPM_L2_MODE_POWER_COLLAPSE;
+static uint32_t default_l2_mode;
+
+
+static ssize_t lpm_levels_attr_show(
+	struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t lpm_levels_attr_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count);
+
+
+static int lpm_lvl_dbg_msk;
+
+module_param_named(
+	debug_mask, lpm_lvl_dbg_msk, int, S_IRUGO | S_IWUSR | S_IWGRP
+);
+
+static bool menu_select;
+module_param_named(
+	menu_select, menu_select, bool, S_IRUGO | S_IWUSR | S_IWGRP
+);
+
+static int msm_pm_sleep_time_override;
+module_param_named(sleep_time_override,
+	msm_pm_sleep_time_override, int, S_IRUGO | S_IWUSR | S_IWGRP);
+
+static int num_powered_cores;
+static struct hrtimer lpm_hrtimer;
+
+static struct kobj_attribute lpm_l2_kattr = __ATTR(l2,  S_IRUGO|S_IWUSR,\
+		lpm_levels_attr_show, lpm_levels_attr_store);
+
+static struct attribute *lpm_levels_attr[] = {
+	&lpm_l2_kattr.attr,
+	NULL,
+};
+
+static struct attribute_group lpm_levels_attr_grp = {
+	.attrs = lpm_levels_attr,
+};
+
+/* SYSFS */
+static ssize_t lpm_levels_attr_show(
+	struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	unsigned int lpm_level;
 	struct msm_rpmrs_level *level = NULL;
@@ -391,7 +497,39 @@ fail:
 	return -EFAULT;
 }
 
+<<<<<<< HEAD
 static struct of_device_id msm_lpm_levels_match_table[] = {
+=======
+static struct of_device_id cpu_modes_mtch_tbl[] __initdata = {
+	{.compatible = "qcom,cpu-modes"},
+	{},
+};
+
+static struct platform_driver cpu_modes_driver = {
+	.probe = lpm_cpu_probe,
+	.driver = {
+		.name = "cpu-modes",
+		.owner = THIS_MODULE,
+		.of_match_table = cpu_modes_mtch_tbl,
+	},
+};
+
+static struct of_device_id system_modes_mtch_tbl[] __initdata = {
+	{.compatible = "qcom,system-modes"},
+	{},
+};
+
+static struct platform_driver system_modes_driver = {
+	.probe = lpm_system_probe,
+	.driver = {
+		.name = "system-modes",
+		.owner = THIS_MODULE,
+		.of_match_table = system_modes_mtch_tbl,
+	},
+};
+
+static struct of_device_id lpm_levels_match_table[] __initdata = {
+>>>>>>> 1ec0b659970... ARM: msm: GCC Version change.
 	{.compatible = "qcom,lpm-levels"},
 	{},
 };

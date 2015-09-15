@@ -707,7 +707,7 @@ static int __devexit krait_power_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id krait_power_match_table[] = {
+static struct of_device_id krait_power_match_table[] __initdata = {
 	{ .compatible = "qcom,krait-regulator", },
 	{}
 };
@@ -718,6 +718,213 @@ static struct platform_driver krait_power_driver = {
 	.driver	= {
 		.name		= KRAIT_REGULATOR_DRIVER_NAME,
 		.of_match_table	= krait_power_match_table,
+		.owner		= THIS_MODULE,
+	},
+};
+
+static struct of_device_id krait_pdn_match_table[] __initdata = {
+	{ .compatible = "qcom,krait-pdn", },
+	{}
+};
+
+static int boot_cpu_mdd_off(void)
+{
+	struct krait_power_vreg *kvreg = per_cpu(krait_vregs, 0);
+
+	__krait_power_mdd_enable(kvreg, false);
+	return 0;
+}
+
+static void boot_cpu_mdd_on(void)
+{
+	struct krait_power_vreg *kvreg = per_cpu(krait_vregs, 0);
+
+	__krait_power_mdd_enable(kvreg, true);
+}
+
+static struct syscore_ops boot_cpu_mdd_ops = {
+	.suspend	= boot_cpu_mdd_off,
+	.resume		= boot_cpu_mdd_on,
+};
+
+static int __devinit krait_pdn_phase_scaling_init(struct pmic_gang_vreg *pvreg,
+				struct platform_device *pdev)
+{
+	struct resource *res;
+	void __iomem *efuse;
+	u32 efuse_data, efuse_version, efuse_version_data;
+	bool sf_valid, use_efuse;
+	int sf_pos, sf_mask;
+	struct device_node *node = pdev->dev.of_node;
+	struct device *dev = &pdev->dev;
+	int valid_sfs[4] = {0, 0, 0, 0};
+	int sf_versions_len;
+	int rc;
+
+	use_efuse = of_property_read_bool(node,
+				"qcom,use-phase-scaling-factor");
+	/*
+	 * Allow usage of the eFuse phase scaling factor if it is enabled in
+	 * either device tree or by module parameter.
+	 */
+	use_efuse_phase_scaling_factor = use_efuse_phase_scaling_factor
+					 || use_efuse;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+						"phase-scaling-efuse");
+	if (!res || !res->start) {
+		pr_err("phase scaling eFuse address is missing\n");
+		return -EINVAL;
+	}
+
+	/* Read efuse registers */
+	efuse = ioremap(res->start, 8);
+	if (!efuse) {
+		pr_err("could not map phase scaling eFuse address\n");
+		return -EINVAL;
+	}
+
+	efuse_data = readl_relaxed(efuse);
+	efuse_version_data = readl_relaxed(efuse + 4);
+	iounmap(efuse);
+
+	rc = of_property_read_u32(pdev->dev.of_node,
+					"qcom,phase-scaling-factor-bits-pos",
+					&sf_pos);
+	if (rc < 0) {
+		dev_err(dev, "qcom,phase-scaling-factor-bits-pos missing rc=%d\n",
+									rc);
+		return -EINVAL;
+	}
+
+	sf_mask = KRAIT_MASK(sf_pos + 2, sf_pos);
+
+	efuse_version
+		= ((efuse_version_data & PHASE_SCALING_EFUSE_VERSION_MASK) >>
+				PHASE_SCALING_EFUSE_VERSION_POS);
+
+	if (of_find_property(node, "qcom,valid-scaling-factor-versions",
+				&sf_versions_len)
+		&& (sf_versions_len == 4 * sizeof(u32))) {
+		rc = of_property_read_u32_array(node,
+				"qcom,valid-scaling-factor-versions",
+				valid_sfs, 4);
+		sf_valid = (valid_sfs[efuse_version] == 1);
+	} else {
+		dev_err(dev, "qcom,valid-scaling-factor-versions missing or its size is incorrect rc=%d\n",
+									rc);
+		return -EINVAL;
+	}
+
+	if (sf_valid)
+		pvreg->efuse_phase_scaling_factor
+			= ((efuse_data & sf_mask)
+				>> sf_pos) + 1;
+	else
+		pvreg->efuse_phase_scaling_factor = PHASE_SCALING_REF;
+
+	pr_info("eFuse phase scaling factor = %d/%d%s\n",
+		pvreg->efuse_phase_scaling_factor, PHASE_SCALING_REF,
+		sf_valid ? "" : " (eFuse not blown)");
+	pr_info("initial phase scaling factor = %d/%d%s\n",
+		use_efuse_phase_scaling_factor
+			? pvreg->efuse_phase_scaling_factor : PHASE_SCALING_REF,
+		PHASE_SCALING_REF,
+		use_efuse_phase_scaling_factor ? "" : " (ignoring eFuse)");
+
+	return 0;
+}
+
+static int __devinit krait_pdn_probe(struct platform_device *pdev)
+{
+	int rc;
+	bool use_phase_switching = false;
+	int pfm_threshold;
+	struct device *dev = &pdev->dev;
+	struct device_node *node = dev->of_node;
+	struct pmic_gang_vreg *pvreg;
+	struct resource *res;
+
+	if (!dev->of_node) {
+		dev_err(dev, "device tree information missing\n");
+		return -ENODEV;
+	}
+
+	use_phase_switching = of_property_read_bool(node,
+						"qcom,use-phase-switching");
+
+	rc = of_property_read_u32(node, "qcom,pfm-threshold", &pfm_threshold);
+	if (rc < 0) {
+		dev_err(dev, "pfm-threshold missing rc=%d, pfm disabled\n", rc);
+		return -EINVAL;
+	}
+
+	pvreg = devm_kzalloc(&pdev->dev,
+			sizeof(struct pmic_gang_vreg), GFP_KERNEL);
+	if (!pvreg) {
+		pr_err("kzalloc failed.\n");
+		return 0;
+	}
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "apcs_gcc");
+	if (!res) {
+		dev_err(&pdev->dev, "missing apcs gcc base addresses\n");
+		return -EINVAL;
+	}
+
+	pvreg->apcs_gcc_base = devm_ioremap(&pdev->dev, res->start,
+					    resource_size(res));
+
+	if (pvreg->apcs_gcc_base == NULL)
+		return -ENOMEM;
+
+	rc = krait_pdn_phase_scaling_init(pvreg, pdev);
+	if (rc)
+		return rc;
+
+	pvreg->name = "pmic_gang";
+	pvreg->pmic_vmax_uV = PMIC_VOLTAGE_MIN;
+	pvreg->pmic_phase_count = -EINVAL;
+	pvreg->retention_enabled = true;
+	pvreg->pmic_min_uV_for_retention = INT_MAX;
+	pvreg->use_phase_switching = use_phase_switching;
+	pvreg->pfm_threshold = pfm_threshold;
+
+	mutex_init(&pvreg->krait_power_vregs_lock);
+	INIT_LIST_HEAD(&pvreg->krait_power_vregs);
+	the_gang = pvreg;
+
+	pr_debug("name=%s inited\n", pvreg->name);
+
+	/* global initializtion */
+	glb_init(pvreg->apcs_gcc_base);
+
+	rc = of_platform_populate(node, NULL, NULL, dev);
+	if (rc) {
+		dev_err(dev, "failed to add child nodes, rc=%d\n", rc);
+		return rc;
+	}
+
+	dent = debugfs_create_dir(KRAIT_REGULATOR_DRIVER_NAME, NULL);
+	debugfs_create_file("retention_uV",
+			0644, dent, the_gang, &retention_fops);
+	register_syscore_ops(&boot_cpu_mdd_ops);
+	return 0;
+}
+
+static int __devexit krait_pdn_remove(struct platform_device *pdev)
+{
+	the_gang = NULL;
+	debugfs_remove_recursive(dent);
+	return 0;
+}
+
+static struct platform_driver krait_pdn_driver = {
+	.probe	= krait_pdn_probe,
+	.remove	= __devexit_p(krait_pdn_remove),
+	.driver	= {
+		.name		= KRAIT_PDN_DRIVER_NAME,
+		.of_match_table	= krait_pdn_match_table,
 		.owner		= THIS_MODULE,
 	},
 };
