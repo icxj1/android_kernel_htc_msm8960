@@ -69,6 +69,7 @@
 #include <linux/fs_struct.h>
 #include <linux/uaccess.h>
 #include <linux/compat.h>
+#include <linux/uaccess.h>
 
 #include "audit.h"
 
