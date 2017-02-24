@@ -209,6 +209,7 @@ enum rmnet_netlink_message_types_e {
 	 * Returns: status code
 	 */
 	RMNET_NETLINK_DEL_VND_TC_FLOW,
+
 	/*
 	 * RMNET_NETLINK_NEW_VND_WITH_NAME - Creates a new virtual network
 	 *                                   device node with the specified
