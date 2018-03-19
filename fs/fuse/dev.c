@@ -1786,6 +1786,7 @@ static ssize_t fuse_dev_do_write(struct fuse_conn *fc,
 	err = copy_out_args(cs, &req->out, nbytes);
 	if (req->in.h.opcode == FUSE_CANONICAL_PATH) {
 		char *path = (char *)req->out.args[0].value;
+
 		path[req->out.args[0].size - 1] = 0;
 		req->out.h.error = kern_path(path, 0, req->canonical_path);
 	}
