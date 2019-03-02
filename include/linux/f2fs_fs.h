@@ -11,10 +11,6 @@
 #ifndef _LINUX_F2FS_FS_H
 #define _LINUX_F2FS_FS_H
 
-#ifdef CONFIG_F2FS_FS_ENCRYPTION
-#undef CONFIG_F2FS_FS_ENCRYPTION
-#endif
-
 #include <linux/pagemap.h>
 #include <linux/types.h>
 
@@ -287,6 +283,12 @@ struct f2fs_nat_block {
  */
 #define SIT_VBLOCK_MAP_SIZE 64
 #define SIT_ENTRY_PER_BLOCK (PAGE_CACHE_SIZE / sizeof(struct f2fs_sit_entry))
+
+/*
+ * F2FS uses 4 bytes to represent block address. As a result, supported size of
+ * disk is 16 TB and it equals to 16 * 1024 * 1024 / 2 segments.
+ */
+#define F2FS_MAX_SEGMENT       ((16 * 1024 * 1024) / 2)
 
 /*
  * Note that f2fs_sit_entry->vblocks has the following bit-field information.

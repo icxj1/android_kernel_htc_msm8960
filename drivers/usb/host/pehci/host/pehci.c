@@ -30,7 +30,6 @@
 #include <linux/ioport.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/smp_lock.h>
 #include <linux/errno.h>
 #include <linux/init.h>
 #include <linux/timer.h>
@@ -176,14 +175,16 @@ phci_hcd *g_pehci_hcd;
 #endif
 
 
+#if 0
 struct wake_lock pehci_wake_lock;
+#endif
 
 /*---------------------------------------------------
  *    Globals for EHCI
  -----------------------------------------------------*/
 
 /* used	when updating hcd data */
-static spinlock_t hcd_data_lock	= SPIN_LOCK_UNLOCKED;
+DEFINE_SPINLOCK(hcd_data_lock);
 
 static const char hcd_name[] = "ST-Ericsson ISP1763";
 static td_ptd_map_buff_t td_ptd_map_buff[TD_PTD_TOTAL_BUFF_TYPES];	/* td-ptd map buffer for all 1362 buffers */
@@ -980,7 +981,7 @@ pehci_hcd_qtd_schedule(phci_hcd	* hcd, struct ehci_qtd *qtd,
 	pehci_check("newqtd being scheduled, device: %d,map: %x\n",
 		    urb->dev->devnum, td_ptd_map->ptd_bitmap);
 
-	//udelay(100);
+	udelay(100);
 
 	memset(qha, 0, sizeof(isp1763_qha));
 	/*convert qtd to qha */
@@ -3897,8 +3898,8 @@ pehci_hub_descriptor(phci_hcd *	hcd, struct usb_hub_descriptor *desc)
 	desc->bDescLength = 7 +	2 * temp;
 	/* two bitmaps:	 ports removable, and usb 1.0 legacy PortPwrCtrlMask */
 
-	memset(&desc->DeviceRemovable[0], 0, temp);
-	memset(&desc->PortPwrCtrlMask[temp], 0xff, temp);
+	memset(&desc->u.hs.DeviceRemovable[0], 0, temp);
+	memset(&desc->u.hs.PortPwrCtrlMask[temp], 0xff, temp);
 
 	temp = 0x0008;		/* per-port overcurrent	reporting */
 	temp |=	0x0001;		/* per-port power control */
@@ -4495,8 +4496,9 @@ pehci_hcd_start(struct usb_hcd *usb_hcd)
 	isp1763_reg_write16(pehci_hcd->dev, pehci_hcd->regs.hwmodecontrol,
 		hwmodectrl);	
 	printk(KERN_NOTICE "Mode Ctrl Value after buswidth: %x\n", hwmodectrl);
-
+	mb();
 	isp1763_reg_write16(pehci_hcd->dev, pehci_hcd->regs.scratch, 0x3344);
+	ndelay(100);
 
 	ul_scratchval =
 		isp1763_reg_read16(pehci_hcd->dev, pehci_hcd->regs.scratch,
@@ -5916,9 +5918,11 @@ pehci_hcd_probe(struct isp1763_dev *isp1763_dev, isp1763_id * ids)
 	INIT_LIST_HEAD(&(pehci_hcd->cleanup_urb.urb_list));
 #endif
 	enable_irq_wake(isp1763_dev->irq);
+#if 0
 	wake_lock_init(&pehci_wake_lock, WAKE_LOCK_SUSPEND,
 						dev_name(&dev->dev));
 	wake_lock(&pehci_wake_lock);
+#endif
 
 	pehci_entry("--	%s: Exit\n", __FUNCTION__);
 	isp1763_hcd=isp1763_dev;
@@ -6020,8 +6024,10 @@ pehci_hcd_powerdown(struct	isp1763_dev *dev)
 
 	isp1763_reg_write32(dev, HC_POWER_DOWN_CONTROL_REG, 0xffff0800);
 
+#if 0
 	wake_unlock(&pehci_wake_lock);
 	wake_lock_destroy(&pehci_wake_lock);
+#endif
 
 	hcdpowerdown = 1;
 	
@@ -6088,7 +6094,9 @@ static int pehci_bus_suspend(struct usb_hcd *usb_hcd)
 
 	printk("-- %s \n",__FUNCTION__);
 
+#if 0
 	wake_unlock(&pehci_wake_lock);
+#endif
 
 	return 0;
 	
@@ -6144,7 +6152,9 @@ static int pehci_bus_resume(struct usb_hcd *usb_hcd)
 		return -1;
 	}
 
+#if 0
 	wake_lock(&pehci_wake_lock);
+#endif
 
 	printk("%s: Powerdown Reg Val: 0x%08x -- %d\n", __func__, i, temp);
 
@@ -6238,7 +6248,9 @@ pehci_hcd_resume(struct	isp1763_dev *dev)
 		return;
 	}
 
+#if 0
 	wake_lock(&pehci_wake_lock);
+#endif
 
 	isp1763_reg_write16(dev, HC_INTENABLE_REG,0); //0xD6
 	isp1763_reg_write32(dev,HC_INTERRUPT_REG_EHCI,0x4); //0x94 
@@ -6326,7 +6338,9 @@ pehci_hcd_suspend(struct isp1763_dev *dev)
 
 	isp1763_reg_write32(dev, HC_POWER_DOWN_CONTROL_REG, 0xffff0830);
 
+#if 0
 	wake_unlock(&pehci_wake_lock);
+#endif
 	
 }
 
@@ -6368,8 +6382,10 @@ pehci_hcd_remove(struct	isp1763_dev *isp1763_dev)
 //	isp1763_free_irq(isp1763_dev,usb_hcd);
 	usb_remove_hcd(usb_hcd);
 
+#if 0
 	wake_unlock(&pehci_wake_lock);
 	wake_lock_destroy(&pehci_wake_lock);
+#endif
 
 	return ;
 }

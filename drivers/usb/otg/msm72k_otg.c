@@ -536,6 +536,9 @@ static int msm_otg_set_power(struct usb_phy *xceiv, unsigned mA)
 				test_bit(ID_B, &dev->inputs))
 		charge = USB_IDCHG_MAX;
 
+	if (dev->curr_power == charge)
+		return 0;
+
 	pr_debug("Charging with %dmA current\n", charge);
 	/* Call vbus_draw only if the charger is of known type and also
 	 * ignore request to stop charging as a result of suspend interrupt
@@ -544,6 +547,8 @@ static int msm_otg_set_power(struct usb_phy *xceiv, unsigned mA)
 	if (pdata->chg_vbus_draw && new_chg != USB_CHG_TYPE__INVALID &&
 		(charge || new_chg != USB_CHG_TYPE__WALLCHARGER))
 			pdata->chg_vbus_draw(charge);
+
+	dev->curr_power = charge;
 
 	if (new_chg == USB_CHG_TYPE__WALLCHARGER) {
 		wake_lock(&dev->wlock);
@@ -632,6 +637,11 @@ static void msm_otg_start_host(struct usb_otg *otg, int on)
 			else
 				clk_disable_unprepare(dev->iface_clk);
 		}
+
+		if (on)
+			otg_pm_qos_update_latency(dev, 1);
+		else
+			otg_pm_qos_update_latency(dev, 0);
 
 		dev->start_host(otg->host, on);
 
@@ -951,6 +961,21 @@ phy_resumed:
 		msm_otg_start_host(dev->phy.otg, REQUEST_RESUME);
 	}
 
+	if (!work_pending(&dev->sm_work) && !hrtimer_active(&dev->timer) &&
+			!work_pending(&dev->otg_resume_work)) {
+		wake_lock_timeout(&dev->wlock, msecs_to_jiffies(2000));
+	}
+
+	if (!work_pending(&dev->sm_work) && !hrtimer_active(&dev->timer) &&
+			!work_pending(&dev->otg_resume_work)) {
+		wake_lock_timeout(&dev->wlock, msecs_to_jiffies(2000));
+	}
+
+	if (!work_pending(&dev->sm_work) && !hrtimer_active(&dev->timer) &&
+			!work_pending(&dev->otg_resume_work)) {
+		wake_lock_timeout(&dev->wlock, msecs_to_jiffies(2000));
+	}
+
 	/* Enable irq which was disabled before scheduling this work.
 	 * But don't release wake_lock, as we got async interrupt and
 	 * there will be some work pending for OTG state machine.
@@ -1229,7 +1254,7 @@ void msm_otg_set_vbus_state(int online)
 static irqreturn_t msm_otg_irq(int irq, void *data)
 {
 	struct msm_otg *dev = data;
-	u32 otgsc, sts, pc, sts_mask;
+	u32 otgsc, sts, pc;
 	irqreturn_t ret = IRQ_HANDLED;
 	int work = 0;
 	enum usb_otg_state state;
@@ -1250,12 +1275,16 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 	otgsc = readl(USB_OTGSC);
 	sts = readl(USB_USBSTS);
 
-	sts_mask = (otgsc & OTGSC_INTR_MASK) >> 8;
-
-	if (!((otgsc & sts_mask) || (sts & STS_PCI))) {
+	/* At times during USB disconnect, hardware generates 1MSIS interrupt
+	 * during PHY reset, which leads to irq not handled error as IRQ_NONE
+	 * is notified. To workaround this issue, check for all the
+	 * OTG_INTR_STS_MASK bits and if set, clear them and notify IRQ_HANDLED.
+	 */
+	if (!((otgsc & OTGSC_INTR_STS_MASK) || (sts & STS_PCI))) {
 		ret = IRQ_NONE;
 		goto out;
 	}
+	writel_relaxed(otgsc, USB_OTGSC);
 
 	spin_lock_irqsave(&dev->lock, flags);
 	state = dev->phy.state;
@@ -1277,10 +1306,8 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 			set_bit(A_BUS_REQ, &dev->inputs);
 			clear_bit(ID, &dev->inputs);
 		}
-		writel(otgsc, USB_OTGSC);
 		work = 1;
 	} else if (otgsc & OTGSC_BSVIS) {
-		writel(otgsc, USB_OTGSC);
 		/* BSV interrupt comes when operating as an A-device
 		 * (VBUS on/off).
 		 * But, handle BSV when charger is removed from ACA in ID_A
@@ -1298,7 +1325,6 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 		work = 1;
 	} else if (otgsc & OTGSC_DPIS) {
 		pr_debug("DPIS detected\n");
-		writel(otgsc, USB_OTGSC);
 		set_bit(A_SRP_DET, &dev->inputs);
 		set_bit(A_BUS_REQ, &dev->inputs);
 		work = 1;
@@ -1413,6 +1439,22 @@ unsigned val, unsigned reg)
 
 	return -1;
 }
+
+#ifdef CONFIG_USB_MULTIPLE_CHARGER_DETECT
+static int usb_ulpi_write_with_reset(struct usb_phy *xceiv, u32 val, u32 reg)
+{
+	struct msm_otg *dev = container_of(xceiv, struct msm_otg, phy);
+
+	return ulpi_write_with_reset(dev, val, reg);
+}
+
+static int usb_ulpi_read_with_reset(struct usb_phy *xceiv, u32 reg)
+{
+	struct msm_otg *dev = container_of(xceiv, struct msm_otg, phy);
+
+	return ulpi_read_with_reset(dev, reg);
+}
+#endif
 
 /* some of the older targets does not turn off the PLL
  * if onclock bit is set and clocksuspendM bit is on,
@@ -2588,6 +2630,10 @@ static void otg_debugfs_cleanup(void)
 struct usb_phy_io_ops msm_otg_io_ops = {
 	.read = usb_ulpi_read,
 	.write = usb_ulpi_write,
+#ifdef CONFIG_USB_MULTIPLE_CHARGER_DETECT
+	.read_with_reset = usb_ulpi_read_with_reset,
+	.write_with_reset = usb_ulpi_write_with_reset,
+#endif
 };
 
 static int __init msm_otg_probe(struct platform_device *pdev)

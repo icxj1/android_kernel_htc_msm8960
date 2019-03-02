@@ -1859,7 +1859,7 @@ seqretry:
  * dentry is returned. The caller must use dput to free the entry when it has
  * finished using it. %NULL is returned if the dentry does not exist.
  */
-struct dentry *d_lookup(struct dentry *parent, struct qstr *name)
+struct dentry *d_lookup(const struct dentry *parent, const struct qstr *name)
 {
 	struct dentry *dentry;
 	unsigned seq;
@@ -1889,7 +1889,7 @@ EXPORT_SYMBOL(d_lookup);
  *
  * __d_lookup callers must be commented.
  */
-struct dentry *__d_lookup(struct dentry *parent, struct qstr *name)
+struct dentry *__d_lookup(const struct dentry *parent, const struct qstr *name)
 {
 	unsigned int len = name->len;
 	unsigned int hash = name->hash;
@@ -2575,7 +2575,7 @@ global_root:
 	if (!slash)
 		error = prepend(buffer, buflen, "/", 1);
 	if (!error)
-		error = is_mounted(vfsmnt) ? 1 : 2;
+		error = real_mount(vfsmnt)->mnt_ns ? 1 : 2;
 	return error;
 }
 
@@ -2742,7 +2742,7 @@ char *dynamic_dname(struct dentry *dentry, char *buffer, int buflen,
 			const char *fmt, ...)
 {
 	va_list args;
-	char temp[64];
+	char temp[256];
 	int sz;
 
 	va_start(args, fmt);
@@ -3016,6 +3016,22 @@ rename_retry:
 	write_seqlock(&rename_lock);
 	goto again;
 }
+
+void d_tmpfile(struct dentry *dentry, struct inode *inode)
+{
+	inode_dec_link_count(inode);
+	BUG_ON(dentry->d_name.name != dentry->d_iname ||
+		!list_empty(&dentry->d_u.d_alias) ||
+		!d_unlinked(dentry));
+	spin_lock(&dentry->d_parent->d_lock);
+	spin_lock_nested(&dentry->d_lock, DENTRY_D_LOCK_NESTED);
+	dentry->d_name.len = sprintf(dentry->d_iname, "#%llu",
+				(unsigned long long)inode->i_ino);
+	spin_unlock(&dentry->d_lock);
+	spin_unlock(&dentry->d_parent->d_lock);
+	d_instantiate(dentry, inode);
+}
+EXPORT_SYMBOL(d_tmpfile);
 
 /**
  * find_inode_number - check for dentry with name

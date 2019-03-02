@@ -2,7 +2,7 @@
  * Driver for HighSpeed USB Client Controller in MSM7K
  *
  * Copyright (C) 2008 Google, Inc.
- * Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  * Author: Mike Lockwood <lockwood@android.com>
  *         Brian Swetland <swetland@google.com>
  *
@@ -90,6 +90,7 @@ struct msm_request {
 	unsigned busy:1;
 	unsigned live:1;
 	unsigned alloced:1;
+	unsigned completing:1;
 
 	dma_addr_t dma;
 	dma_addr_t item_dma;
@@ -151,6 +152,7 @@ static void usb_do_remote_wakeup(struct work_struct *w);
 #define REMOTE_WAKEUP_DELAY	msecs_to_jiffies(1000)
 #define PHY_STATUS_CHECK_DELAY	(jiffies + msecs_to_jiffies(1000))
 #define EPT_PRIME_CHECK_DELAY	(jiffies + msecs_to_jiffies(1000))
+#define EP_DEQUEUE_WAIT		100 /* wait 1ms */
 
 struct usb_info {
 	/* lock for register/queue/device state changes */
@@ -192,6 +194,10 @@ struct usb_info {
 	unsigned chg_current;
 	unsigned chg_type_retry_cnt;
 	bool proprietary_chg;
+#ifdef CONFIG_USB_MULTIPLE_CHARGER_DETECT
+	// this flag is to indicate if USB Y-cable(charger + data) is attached.
+	unsigned is_cdp;
+#endif
 	struct delayed_work chg_det;
 	struct delayed_work chg_stop;
 	struct msm_hsusb_gadget_platform_data *pdata;
@@ -237,6 +243,26 @@ static int msm72k_set_halt(struct usb_ep *_ep, int value);
 static void flush_endpoint(struct msm_endpoint *ept);
 static void usb_reset(struct usb_info *ui);
 static int usb_ept_set_halt(struct usb_ep *_ep, int value);
+
+#ifdef CONFIG_USB_MULTIPLE_CHARGER_DETECT
+static int usb_multi_chg_detect(struct usb_info *ui);
+
+static unsigned ulpi_read_with_reset(struct usb_info *ui, unsigned reg)
+{
+	if (ui->xceiv->io_ops->read_with_reset) {
+		return ui->xceiv->io_ops->read_with_reset(ui->xceiv, reg);
+	}
+	return 0;
+}
+
+static int ulpi_write_with_reset(struct usb_info *ui, unsigned val, unsigned reg)
+{
+	if (ui->xceiv->io_ops->write_with_reset) {
+		return ui->xceiv->io_ops->write_with_reset(ui->xceiv, val, reg);
+	}
+	return 0;
+}
+#endif
 
 static void msm_hsusb_set_speed(struct usb_info *ui)
 {
@@ -306,7 +332,11 @@ static inline enum chg_type usb_get_chg_type(struct usb_info *ui)
 	}
 }
 
+#ifdef CONFIG_MACH_TENDERLOIN
+#define USB_WALLCHARGER_CHG_CURRENT 2000
+#else
 #define USB_WALLCHARGER_CHG_CURRENT 1800
+#endif
 #define USB_PROPRIETARY_CHG_CURRENT 500
 static int usb_get_max_power(struct usb_info *ui)
 {
@@ -324,14 +354,30 @@ static int usb_get_max_power(struct usb_info *ui)
 	spin_lock_irqsave(&ui->lock, flags);
 	suspended = ui->usb_state == USB_STATE_SUSPENDED ? 1 : 0;
 	configured = atomic_read(&ui->configured);
+#ifndef CONFIG_USB_MULTIPLE_CHARGER_DETECT
 	bmaxpow = ui->b_max_pow;
+#else
+	if (ui->is_cdp != 0) {
+		bmaxpow = ui->chg_current;
+		//printk("UDC: it is CDP\n");
+	}
+	else
+	{
+		bmaxpow = ui->b_max_pow;
+		//printk("UDC: it is SDP\n");
+	}
+#endif
 	spin_unlock_irqrestore(&ui->lock, flags);
 
 	if (temp == USB_CHG_TYPE__INVALID)
 		return -ENODEV;
 
 	if (temp == USB_CHG_TYPE__WALLCHARGER && !ui->proprietary_chg)
+#ifndef CONFIG_USB_MULTIPLE_CHARGER_DETECT
 		return USB_WALLCHARGER_CHG_CURRENT;
+#else
+		return ui->chg_current;
+#endif
 	else
 		return USB_PROPRIETARY_CHG_CURRENT;
 
@@ -437,7 +483,7 @@ static void usb_chg_detect(struct work_struct *w)
 		spin_unlock_irqrestore(&ui->lock, flags);
 		return;
 	}
-
+#ifndef CONFIG_USB_MULTIPLE_CHARGER_DETECT
 	temp = usb_get_chg_type(ui);
 	if (temp != USB_CHG_TYPE__WALLCHARGER && temp != USB_CHG_TYPE__SDP
 					&& !ui->chg_type_retry_cnt) {
@@ -456,7 +502,18 @@ static void usb_chg_detect(struct work_struct *w)
 	maxpower = usb_get_max_power(ui);
 	if (maxpower > 0)
 		usb_phy_set_power(ui->xceiv, maxpower);
+#else
+	spin_unlock_irqrestore(&ui->lock, flags);
 
+	maxpower = usb_multi_chg_detect(ui);
+	msm72k_pullup_internal(&ui->gadget, 1);
+
+	temp = atomic_read(&otg->chg_type);
+	printk("%s: temp = %d\n", __func__, temp);
+
+	if (maxpower > 0 && temp != USB_CHG_TYPE__SDP )
+		usb_phy_set_power(ui->xceiv, maxpower);
+#endif
 	/* USB driver prevents idle and suspend power collapse(pc)
 	 * while USB cable is connected. But when dedicated charger is
 	 * connected, driver can vote for idle and suspend pc.
@@ -469,6 +526,106 @@ static void usb_chg_detect(struct work_struct *w)
 		wake_unlock(&ui->wlock);
 	}
 }
+
+#ifdef CONFIG_USB_MULTIPLE_CHARGER_DETECT
+static int usb_multi_chg_detect(struct usb_info *ui)
+{
+	struct msm_otg *otg = to_msm_otg(ui->xceiv);
+	enum chg_type temp = USB_CHG_TYPE__INVALID;
+	int maxpower = -EINVAL;
+
+	ui->is_cdp = 0; // not CDP
+
+	//disconnect all pull-up and pull-down resistors on D+ and D-
+	writel(readl(USB_USBCMD) & ~USBCMD_RS, USB_USBCMD);
+	/* S/W workaround, Issue#1 */
+	ulpi_write_with_reset(ui, 0x0f, 0x34);
+	//ulpi_write_with_reset(ui, 0x48, 0x04);
+
+	msleep(10);
+
+	ulpi_write_with_reset(ui,0x4d, 0x04);
+	ulpi_write_with_reset(ui,0x06, 0x0c);
+	msleep(20/*10*/);  // this delay must be here !!
+
+	if ((readl(USB_PORTSC) & PORTSC_LS) & (1 << 11)) { //D+ : high
+		if ((readl(USB_PORTSC) & PORTSC_LS) & (1 << 10)) { //D+ : high, D- : high
+			ulpi_write_with_reset(ui, 0x45, 0x04);
+			ulpi_write_with_reset(ui, 0x2, 0x0b); //pull-down D+
+			msleep(10/*100*/);
+//			printk("UDC-CHG (2-1): %s (%d) : D+/D- = 0x%x\n", __func__, __LINE__, (readl(USB_PORTSC) & PORTSC_LS));
+			if ((readl(USB_PORTSC) & PORTSC_LS) & (1 << 10)) { //D+ : high, D- : high
+				printk("UDC-CHG (2-1-1-1): %s (%d) : HP Phone Adaptor(900mA)!\n", __func__, __LINE__);
+				temp = USB_CHG_TYPE__WALLCHARGER;
+				maxpower = 900;//500;
+			} else { //D+ : high, D- : low
+				printk("UDC-CHG (2-1-1-2): %s (%d) : 10W Adaptor(2000mA)!\n", __func__, __LINE__);
+				temp = USB_CHG_TYPE__WALLCHARGER;
+				maxpower = 2000; //usb_get_max_power(ui);
+
+			}
+		} else { //D+ : high, D- : low
+			printk("UDC-CHG (2-1-2): %s (%d) : Unknown type Adaptor(100mA)!\n", __func__, __LINE__);
+			temp = USB_CHG_TYPE__WALLCHARGER;
+			maxpower = 100;
+
+		}
+	} else { //D+ : low,
+		if ((readl(USB_PORTSC) & PORTSC_LS) & (1 << 10)) { //D+ : low, D- : high
+			printk("UDC-CHG (2-2): %s (%d) : Unknown type Adaptor(100mA)!\n", __func__, __LINE__);
+			temp = USB_CHG_TYPE__WALLCHARGER;
+			maxpower = 100;
+
+		} else { //D+ : low, D- : low
+			ulpi_write_with_reset(ui, 0x25, 0x34); //Aplly current source on D+
+			msleep(10/*100*/);
+//			printk("UDC-CHG (2-2): %s (%d) : D+/D- = 0x%x\n", __func__, __LINE__, (readl(USB_PORTSC) & PORTSC_LS));
+
+			if ((readl(USB_PORTSC) & PORTSC_LS) & (1 << 11)) { //D+ : high
+				if ((readl(USB_PORTSC) & PORTSC_LS) & (1 << 10)) { //D+ : high, D- : high
+					printk("UDC-CHG (2-2-1-1): %s (%d) : OMTP Phone Adaptor(900mA)!\n", __func__, __LINE__);
+					temp = USB_CHG_TYPE__WALLCHARGER;
+					maxpower = 900;
+				} else { //D+ : high, D- : low
+					printk("UDC-CHG (2-2-1-2): %s (%d) : Unknown type Adaptor(100mA)!\n", __func__, __LINE__);
+					temp = USB_CHG_TYPE__WALLCHARGER;
+					maxpower = 100;
+				}
+			} else { //D+ : low
+				ulpi_write_with_reset(ui, 0x24, 0x34);
+				msleep(10);
+				if (ulpi_read_with_reset(ui, 0x34) & (1 << 4)) {
+					ulpi_write_with_reset(ui, 0x0f, 0x34);
+					writel(readl(USB_USBCMD) & ~USBCMD_RS, USB_USBCMD);
+					msleep(10);
+					writel(readl(USB_USBCMD) | USBCMD_RS, USB_USBCMD);
+					printk("UDC-CHG (2-2-2-1): %s (%d) : USB host Charging Downstream Port(1400mA)!\n", __func__, __LINE__);
+					//temp = USB_CHG_TYPE__WALLCHARGER;
+					temp = USB_CHG_TYPE__SDP;
+					ui->is_cdp = 1;
+					maxpower = 1400;
+
+				} else {
+					ulpi_write_with_reset(ui, 0x0f, 0x34);
+					writel(readl(USB_USBCMD) & ~USBCMD_RS, USB_USBCMD);
+					msleep(10);
+					writel(readl(USB_USBCMD) | USBCMD_RS, USB_USBCMD);
+					printk("UDC-CHG (2-2-2): %s (%d) : USB host Adaptor(500mA)!\n", __func__, __LINE__);
+					temp = USB_CHG_TYPE__SDP;
+					maxpower = 500;//usb_get_max_power(ui);
+				}
+			}
+			ulpi_write_with_reset(ui,0x0F, 0x34); // clean up current source on D+
+		}
+	}
+
+	atomic_set(&otg->chg_type, temp);
+
+	ui->chg_current = maxpower;
+
+	return maxpower;
+}
+#endif //CONFIG_USB_MULTIPLE_CHARGER_DETECT
 
 static int usb_ep_get_stall(struct msm_endpoint *ept)
 {
@@ -514,6 +671,15 @@ static void config_ept(struct msm_endpoint *ept)
 {
 	struct usb_info *ui = ept->ui;
 	unsigned cfg = CONFIG_MAX_PKT(ept->ep.maxpacket) | CONFIG_ZLT;
+	const struct usb_endpoint_descriptor *desc = ept->ep.desc;
+	unsigned mult = 0;
+
+	if (desc && ((desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)
+				== USB_ENDPOINT_XFER_ISOC)) {
+		cfg &= ~(CONFIG_MULT);
+		mult = ((ept->ep.maxpacket >> CONFIG_MULT_SHIFT) + 1) & 0x03;
+		cfg |= (mult << (ffs(CONFIG_MULT) - 1));
+	}
 
 	/* ep0 out needs interrupt-on-setup */
 	if (ept->bit == 0)
@@ -1217,12 +1383,14 @@ dequeue:
 		}
 		req->busy = 0;
 		req->live = 0;
+		req->completing = 1;
 
 		if (req->req.complete) {
 			spin_unlock_irqrestore(&ui->lock, flags);
 			req->req.complete(&ept->ep, &req->req);
 			spin_lock_irqsave(&ui->lock, flags);
 		}
+		req->completing = 0;
 	}
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
@@ -1247,6 +1415,9 @@ static void flush_endpoint_sw(struct msm_endpoint *ept)
 	struct usb_info *ui = ept->ui;
 	struct msm_request *req, *next_req = NULL;
 	unsigned long flags;
+
+	if (!ept->req)
+		return;
 
 	/* inactive endpoints have nothing to do here */
 	if (ept->ep.maxpacket == 0)
@@ -1292,8 +1463,12 @@ static void flush_endpoint(struct msm_endpoint *ept)
 static irqreturn_t usb_interrupt(int irq, void *data)
 {
 	struct usb_info *ui = data;
+	struct msm_otg *dev = to_msm_otg(ui->xceiv);
 	unsigned n;
 	unsigned long flags;
+
+	if (atomic_read(&dev->in_lpm))
+		return IRQ_NONE;
 
 	n = readl(USB_USBSTS);
 	writel(n, USB_USBSTS);
@@ -1578,9 +1753,9 @@ static void usb_do_work(struct work_struct *w)
 
 				if (!atomic_read(&ui->softconnect))
 					break;
-
+#ifndef CONFIG_USB_MULTIPLE_CHARGER_DETECT
 				msm72k_pullup_internal(&ui->gadget, 1);
-
+#endif
 				if (!ui->gadget.is_a_peripheral)
 					schedule_delayed_work(
 							&ui->chg_det,
@@ -1638,6 +1813,20 @@ static void usb_do_work(struct work_struct *w)
 				usb_phy_set_power(ui->xceiv, 0);
 
 				if (ui->irq) {
+					/* Disable and acknowledge all
+					 * USB interrupts before freeing
+					 * irq, so that no USB spurious
+					 * interrupt occurs during USB cable
+					 * disconnect which may lead to
+					 * IRQ nobody cared error.
+					 */
+					writel_relaxed(0, USB_USBINTR);
+					writel_relaxed(readl_relaxed(USB_USBSTS)
+								, USB_USBSTS);
+					/* Ensure that above STOREs are
+					 * completed before enabling
+					 * interrupts */
+					wmb();
 					free_irq(ui->irq, ui);
 					ui->irq = 0;
 				}
@@ -1712,6 +1901,12 @@ static void usb_do_work(struct work_struct *w)
 				usb_reset(ui);
 				ui->state = USB_STATE_ONLINE;
 				usb_do_work_check_vbus(ui);
+#ifdef CONFIG_USB_SWITCH_FSA9480
+				if (ui->flags & USB_FLAG_VBUS_ONLINE) {
+					if (ui->pdata->check_microusb)
+						ui->pdata->check_microusb();
+				}
+#endif
 				ret = request_irq(otg->irq, usb_interrupt,
 							IRQF_SHARED,
 							ui->pdev->name, ui);
@@ -1729,8 +1924,9 @@ static void usb_do_work(struct work_struct *w)
 
 				if (!atomic_read(&ui->softconnect))
 					break;
+#ifndef CONFIG_USB_MULTIPLE_CHARGER_DETECT
 				msm72k_pullup_internal(&ui->gadget, 1);
-
+#endif
 				if (!ui->gadget.is_a_peripheral)
 					schedule_delayed_work(
 							&ui->chg_det,
@@ -2127,6 +2323,9 @@ msm72k_queue(struct usb_ep *_ep, struct usb_request *req, gfp_t gfp_flags)
 	struct msm_endpoint *ep = to_msm_endpoint(_ep);
 	struct usb_info *ui = ep->ui;
 
+	if (!atomic_read(&ui->softconnect))
+		return -ENODEV;
+
 	if (ep == &ui->ep0in) {
 		struct msm_request *r = to_msm_request(req);
 		if (!req->length)
@@ -2153,11 +2352,40 @@ static int msm72k_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 
 	struct msm_request *temp_req;
 	unsigned long flags;
-
-	if (!(ui && req && ep->req))
-		return -EINVAL;
+	u8	iter = 0;
 
 	spin_lock_irqsave(&ui->lock, flags);
+
+	/*
+	 * Only ep0 IN is exposed to composite.  When a req is dequeued
+	 * on ep0, check both ep0 IN and ep0 OUT queues.
+	 */
+	if (req == NULL || ui == NULL || (ep->req == NULL
+		&& (ep->num != 0 || ui->ep0out.req == NULL))) {
+		spin_unlock_irqrestore(&ui->lock, flags);
+		return -EINVAL;
+	}
+
+	/* Synchronize handle_endpoint/msm72k_dequeue. Delay 1ms */
+	if (ep->num == 0) {
+		while ((iter < EP_DEQUEUE_WAIT) && req->completing) {
+			iter++;
+			spin_unlock_irqrestore(&ui->lock, flags);
+			udelay(10);
+			spin_lock_irqsave(&ui->lock, flags);
+		}
+	}
+	spin_unlock_irqrestore(&ui->lock, flags);
+
+	if (ep->num == 0) {
+		/* Flush both out and in control endpoints */
+		flush_endpoint(&ui->ep0out);
+		flush_endpoint(&ui->ep0in);
+		return 0;
+	}
+
+	spin_lock_irqsave(&ui->lock, flags);
+
 	if (!req->busy) {
 		dev_dbg(&ui->pdev->dev, "%s: !req->busy\n", __func__);
 		spin_unlock_irqrestore(&ui->lock, flags);

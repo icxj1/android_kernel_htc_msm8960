@@ -17,7 +17,7 @@
 
 static unsigned mounts_poll(struct file *file, poll_table *wait)
 {
-	struct proc_mounts *p = proc_mounts(file->private_data);
+	struct proc_mounts *p = file->private_data;
 	struct mnt_namespace *ns = p->ns;
 	unsigned res = POLLIN | POLLRDNORM;
 
@@ -112,7 +112,9 @@ static int show_vfsmnt(struct seq_file *m, struct vfsmount *mnt)
 	if (err)
 		goto out;
 	show_mnt_opts(m, mnt);
-	if (sb->s_op->show_options)
+	if (sb->s_op->show_options2)
+			err = sb->s_op->show_options2(mnt, m, mnt_path.dentry);
+	else if (sb->s_op->show_options)
 		err = sb->s_op->show_options(m, mnt_path.dentry);
 	seq_puts(m, " 0 0\n");
 out:
@@ -121,7 +123,7 @@ out:
 
 static int show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 {
-	struct proc_mounts *p = proc_mounts(m);
+	struct proc_mounts *p = m->private;
 	struct mount *r = real_mount(mnt);
 	struct super_block *sb = mnt->mnt_sb;
 	struct path mnt_path = { .dentry = mnt->mnt_root, .mnt = mnt };
@@ -173,7 +175,9 @@ static int show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 	err = show_sb_opts(m, sb);
 	if (err)
 		goto out;
-	if (sb->s_op->show_options)
+	if (sb->s_op->show_options2) {
+		err = sb->s_op->show_options2(mnt, m, mnt->mnt_root);
+	} else if (sb->s_op->show_options)
 		err = sb->s_op->show_options(m, mnt->mnt_root);
 	seq_putc(m, '\n');
 out:
@@ -268,6 +272,7 @@ static int mounts_open_common(struct inode *inode, struct file *file,
 	if (ret)
 		goto err_free;
 
+	p->m.private = p;
 	p->ns = ns;
 	p->root = root;
 	p->m.poll_event = ns->event;
@@ -287,7 +292,7 @@ static int mounts_open_common(struct inode *inode, struct file *file,
 
 static int mounts_release(struct inode *inode, struct file *file)
 {
-	struct proc_mounts *p = proc_mounts(file->private_data);
+	struct proc_mounts *p = file->private_data;
 	path_put(&p->root);
 	put_mnt_ns(p->ns);
 	return seq_release(inode, file);

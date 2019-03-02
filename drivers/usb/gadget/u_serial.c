@@ -147,11 +147,15 @@ static struct workqueue_struct *gserial_wq;
 
 
 #ifdef VERBOSE_DEBUG
+#ifndef pr_vdebug
 #define pr_vdebug(fmt, arg...) \
 	pr_debug(fmt, ##arg)
+#endif /* pr_vdebug */
 #else
+#ifndef pr_vdebug
 #define pr_vdebug(fmt, arg...) \
 	({ if (0) pr_debug(fmt, ##arg); })
+#endif /* pr_vdebug */
 #endif
 
 /*-------------------------------------------------------------------------*/
@@ -1318,8 +1322,6 @@ static void usb_debugfs_init(struct gs_port *ui_dev, int port_num)
 	debugfs_create_file("reset", S_IRUGO | S_IWUSR,
 			dent, ui_dev, &debug_rst_ops);
 }
-#else
-static void usb_debugfs_init(struct gs_port *ui_dev) {}
 #endif
 
 /**
@@ -1416,8 +1418,10 @@ int gserial_setup(struct usb_gadget *g, unsigned count)
 				__func__, i, PTR_ERR(tty_dev));
 	}
 
+#ifdef CONFIG_DEBUG_FS
 	for (i = 0; i < count; i++)
 		usb_debugfs_init(ports[i].port, i);
+#endif
 
 	pr_debug("%s: registered %d ttyGS* device%s\n", __func__,
 			count, (count == 1) ? "" : "s");

@@ -370,6 +370,7 @@ static struct file_system_type nfs4_remote_referral_fs_type = {
 	.kill_sb	= nfs4_kill_super,
 	.fs_flags	= FS_RENAME_DOES_D_MOVE|FS_REVAL_DOT|FS_BINARY_MOUNTDATA,
 };
+MODULE_ALIAS_FS("nfs");
 
 struct file_system_type nfs4_referral_fs_type = {
 	.owner		= THIS_MODULE,
@@ -378,6 +379,7 @@ struct file_system_type nfs4_referral_fs_type = {
 	.kill_sb	= nfs4_kill_super,
 	.fs_flags	= FS_RENAME_DOES_D_MOVE|FS_REVAL_DOT|FS_BINARY_MOUNTDATA,
 };
+MODULE_ALIAS_FS("nfs4");
 
 static const struct super_operations nfs4_sops = {
 	.alloc_inode	= nfs_alloc_inode,

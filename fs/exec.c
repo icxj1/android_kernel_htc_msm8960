@@ -1131,7 +1131,7 @@ EXPORT_SYMBOL(flush_old_exec);
 
 void would_dump(struct linux_binprm *bprm, struct file *file)
 {
-	if (inode_permission(file->f_path.dentry->d_inode, MAY_READ) < 0)
+	if (inode_permission2(file->f_path.mnt, file->f_path.dentry->d_inode, MAY_READ) < 0)
 		bprm->interp_flags |= BINPRM_FLAGS_ENFORCE_NONDUMP;
 }
 EXPORT_SYMBOL(would_dump);
@@ -1309,6 +1309,9 @@ static void bprm_fill_uid(struct linux_binprm *bprm)
 
 	if ((bprm->file->f_path.mnt->mnt_flags & MNT_NOSUID) ||
 	    task_no_new_privs(current))
+		return;
+
+	if (task_no_new_privs(current))
 		return;
 
 	inode = bprm->file->f_path.dentry->d_inode;
