@@ -441,8 +441,6 @@ cifs_atomic_open(struct inode *inode, struct dentry *direntry,
 		CIFSSMBClose(xid, tcon, fileHandle);
 		goto out;
 	}
-=======
->>>>>>> 36086cde5f9... cifs: implement i_op->atomic_open()
 
 struct file *
 cifs_atomic_open(struct inode *inode, struct dentry *direntry,
