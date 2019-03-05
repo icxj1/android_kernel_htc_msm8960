@@ -370,12 +370,6 @@ cifs_create_set_dentry:
 	}
 	rc = 0;
 
-		filp = lookup_instantiate_filp(nd, direntry, generic_file_open);
-		if (IS_ERR(filp)) {
-			rc = PTR_ERR(filp);
-			CIFSSMBClose(xid, tcon, fileHandle);
-			goto cifs_create_out;
-		}
 out:
 	kfree(buf);
 	kfree(full_path);
