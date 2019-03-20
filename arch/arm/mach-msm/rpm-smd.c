@@ -475,13 +475,16 @@ static void msm_rpm_notify_sleep_chain(struct rpm_message_header *hdr,
 static int msm_rpm_add_kvp_data_common(struct msm_rpm_request *handle,
 		uint32_t key, const uint8_t *data, int size, bool noirq)
 {
-	int i;
-	int data_size, msg_size;
+	uint32_t i;
+	uint32_t data_size, msg_size;
 
 	if (!handle) {
 		pr_err("%s(): Invalid handle\n", __func__);
 		return -EINVAL;
 	}
+
+	if (size < 0)
+		return  -EINVAL;
 
 	data_size = ALIGN(size, SZ_4);
 	msg_size = data_size + sizeof(struct rpm_request_header);
@@ -791,7 +794,7 @@ static inline int msm_rpm_get_error_from_ack(uint8_t *buf)
 
 static int msm_rpm_read_smd_data(char *buf)
 {
-	int pkt_sz;
+	uint32_t pkt_sz;
 	int bytes_read = 0;
 
 	pkt_sz = smd_cur_packet_size(msm_rpm_data.ch_info);
@@ -847,7 +850,8 @@ static void msm_rpm_log_request(struct msm_rpm_request *cdata)
 	size_t buflen = DEBUG_PRINT_BUFFER_SIZE;
 	char name[5];
 	u32 value;
-	int i, j, prev_valid;
+	uint32_t i;
+	int j, prev_valid;
 	int valid_count = 0;
 	int pos = 0;
 
@@ -972,14 +976,43 @@ static void msm_rpm_log_request(struct msm_rpm_request *cdata)
 	pos += scnprintf(buf + pos, buflen - pos, "\n");
 	printk(buf);
 }
+static int msm_rpm_send_smd_buffer(char *buf, uint32_t size, bool noirq)
+{
+	unsigned long flags;
+	int ret;
+
+	spin_lock_irqsave(&msm_rpm_data.smd_lock_write, flags);
+	ret = smd_write_avail(msm_rpm_data.ch_info);
+
+	while ((ret = smd_write_avail(msm_rpm_data.ch_info)) < size) {
+		if (ret < 0)
+			break;
+		if (!noirq) {
+			spin_unlock_irqrestore(&msm_rpm_data.smd_lock_write,
+					flags);
+			cpu_relax();
+			spin_lock_irqsave(&msm_rpm_data.smd_lock_write, flags);
+		} else
+			udelay(5);
+	}
+
+	if (ret < 0) {
+		pr_err("%s(): SMD not initialized\n", __func__);
+		spin_unlock_irqrestore(&msm_rpm_data.smd_lock_write, flags);
+		return ret;
+	}
+
+	ret = smd_write(msm_rpm_data.ch_info, buf, size);
+	spin_unlock_irqrestore(&msm_rpm_data.smd_lock_write, flags);
+	return ret;
 
 static int msm_rpm_send_data(struct msm_rpm_request *cdata,
 		int msg_type, bool noirq)
 {
 	uint8_t *tmpbuff;
-	int i, ret, msg_size;
-	unsigned long flags;
-
+	int ret;
+	uint32_t i;
+	uint32_t msg_size;
 	int req_hdr_sz, msg_hdr_sz;
 
 	if (!cdata->msg_hdr.data_len)
