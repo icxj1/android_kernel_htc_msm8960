@@ -20,7 +20,6 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/ktime.h>
-#include <linux/cpu.h>
 #include <linux/pm.h>
 #include <linux/pm_qos.h>
 #include <linux/smp.h>
@@ -1266,6 +1265,20 @@ static struct platform_driver msm_cpu_status_driver = {
 	},
 };
 
+static struct of_device_id msm_snoc_clnt_match_tbl[] = {
+	{.compatible = "qcom,pm-snoc-client"},
+	{},
+};
+
+static struct platform_driver msm_cpu_pm_snoc_client_driver = {
+	.probe = msm_pm_snoc_client_probe,
+	.driver = {
+		.name = "pm_snoc_client",
+		.owner = THIS_MODULE,
+		.of_match_table = msm_snoc_clnt_match_tbl,
+	},
+};
+
 static int __init msm_pm_setup_saved_state(void)
 {
 	pgd_t *pc_pgd;
@@ -1313,11 +1326,6 @@ static int __init msm_pm_setup_saved_state(void)
 	return 0;
 }
 core_initcall(msm_pm_setup_saved_state);
-
-static const struct platform_suspend_ops msm_pm_ops = {
-	.enter = msm_pm_enter,
-	.valid = suspend_valid_only_mem,
-};
 
 static void setup_broadcast_timer(void *arg)
 {
@@ -1608,6 +1616,16 @@ static struct platform_driver msm_pm_8x60_driver = {
 
 static int __init msm_pm_8x60_init(void)
 {
+        int rc;
+
+	rc = platform_driver_register(&msm_cpu_pm_snoc_client_driver);
+
+	if (rc) {
+		pr_err("%s(): failed to register driver %s\n", __func__,
+				msm_cpu_pm_snoc_client_driver.driver.name);
+		return rc;
+	}
+
 	return platform_driver_register(&msm_pm_8x60_driver);
 }
 device_initcall(msm_pm_8x60_init);
