@@ -17,8 +17,6 @@
 
 #include "power.h"
 
-#define TIMEOUT		100
-
 /*
  * If set, the suspend/hibernate code will abort transitions to a sleep state
  * if wakeup events are registered during or immediately before the transition.
@@ -51,6 +49,8 @@ static DEFINE_SPINLOCK(events_lock);
 static void pm_wakeup_timer_fn(unsigned long data);
 
 static LIST_HEAD(wakeup_sources);
+
+static DECLARE_WAIT_QUEUE_HEAD(wakeup_count_wait_queue);
 
 /**
  * wakeup_source_prepare - Prepare a new wakeup source for initialization.
@@ -442,6 +442,7 @@ EXPORT_SYMBOL_GPL(pm_stay_awake);
  */
 static void wakeup_source_deactivate(struct wakeup_source *ws)
 {
+	unsigned int cnt, inpr;
 	ktime_t duration;
 	ktime_t now;
 
@@ -476,6 +477,10 @@ static void wakeup_source_deactivate(struct wakeup_source *ws)
 	 * couter of wakeup events in progress simultaneously.
 	 */
 	atomic_add(MAX_IN_PROGRESS, &combined_event_count);
+
+	split_counters(&cnt, &inpr);
+	if (!inpr && waitqueue_active(&wakeup_count_wait_queue))
+		wake_up(&wakeup_count_wait_queue);
 }
 
 /**
@@ -669,12 +674,6 @@ bool pm_get_wakeup_count(unsigned int *count, bool block)
 {
 	unsigned int cnt, inpr;
 
-	for (;;) {
-		split_counters(&cnt, &inpr);
-		if (inpr == 0 || signal_pending(current))
-			break;
-		pm_wakeup_update_hit_counts();
-		schedule_timeout_interruptible(msecs_to_jiffies(TIMEOUT));
 	if (block) {
 		DEFINE_WAIT(wait);
 
