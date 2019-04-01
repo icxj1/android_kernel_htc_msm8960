@@ -20,7 +20,7 @@
 #ifndef HTC_HEADSET_MGR_H
 #define HTC_HEADSET_MGR_H
 
-#include <linux/earlysuspend.h>
+//#include <linux/earlysuspend.h>
 #include <linux/input.h>
 #include <linux/switch.h>
 #include <linux/wakelock.h>
@@ -314,7 +314,7 @@ struct htc_headset_mgr_platform_data {
 struct htc_headset_mgr_info {
 	struct htc_headset_mgr_platform_data pdata;
 	int driver_init_seq;
-	struct early_suspend early_suspend;
+	//struct early_suspend early_suspend;
 	struct wake_lock hs_wake_lock;
 
 	unsigned long hpin_jiffies;

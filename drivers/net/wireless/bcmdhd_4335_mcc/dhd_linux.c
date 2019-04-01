@@ -7596,6 +7596,7 @@ int net_os_send_rssilow_message(struct net_device *dev)
 }
 #endif
 
+#ifdef CONFIG_HAS_WAKELOCK
 void dhd_htc_wake_lock_timeout(dhd_pub_t *pub, int sec)
 {
 	dhd_info_t *dhd = (dhd_info_t *)(pub->info);
@@ -7604,6 +7605,7 @@ void dhd_htc_wake_lock_timeout(dhd_pub_t *pub, int sec)
 	wake_lock_timeout(&dhd->wl_htc, sec * HZ);
 #endif
 }
+#endif
 
 int dhd_os_wake_force_unlock(dhd_pub_t *pub)
 {

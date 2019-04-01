@@ -800,8 +800,8 @@ static int sii9234_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&pInfo->init_delay_work, init_delay_handler);
 	INIT_DELAYED_WORK(&pInfo->init_complete_work, init_complete_handler);
 	INIT_DELAYED_WORK(&pInfo->irq_timeout_work, irq_timeout_handler);
-	INIT_DELAYED_WORK(&pInfo->mhl_on_delay_work, mhl_on_delay_handler);
-	INIT_DELAYED_WORK(&pInfo->turn_off_5v, mhl_turn_off_5v);
+	//INIT_DELAYED_WORK(&pInfo->mhl_on_delay_work, mhl_on_delay_handler);
+	//INIT_DELAYED_WORK(&pInfo->turn_off_5v, mhl_turn_off_5v);
 
 #ifdef CONFIG_INTERNAL_CHARGING_SUPPORT
 	INIT_DELAYED_WORK(&pInfo->detect_charger_work, detect_charger_handler);
@@ -919,8 +919,8 @@ static struct i2c_driver sii9234_driver = {
 	.probe = sii9234_probe,
 	.remove = sii9234_remove,
 #ifndef CONFIG_HAS_EARLYSUSPEND
-	.suspend = sii9234_suspend,
-	.resume = sii9234_resume,
+	//.suspend = sii9234_suspend,
+	//.resume = sii9234_resume,
 #endif
 	.driver = {
 		.name = MHL_SII9234_I2C_NAME,

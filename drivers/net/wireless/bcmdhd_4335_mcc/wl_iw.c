@@ -3421,7 +3421,7 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 	uint32 reason = ntoh32(e->reason);
 
 	struct wl_priv *wl = wlcfg_drv_priv;
-	wl_iw_t *iw = *(wl_iw_t **)netdev_priv(dev);
+	//wl_iw_t *iw = *(wl_iw_t **)netdev_priv(dev);
 #endif
 	memset(&wrqu, 0, sizeof(wrqu));
 	memset(extra, 0, sizeof(extra));
@@ -3556,7 +3556,7 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 			WL_DEFAULT(("Link UP\n"));
 		}
 #endif
-		WAKE_LOCK_TIMEOUT(iw->pub, 15);
+		//WAKE_LOCK_TIMEOUT(iw->pub, 15);
 		wrqu.addr.sa_family = ARPHRD_ETHER;	
 #endif
 		break;

@@ -34,7 +34,6 @@
 #include <mach/mpp.h>
 #include <linux/alarmtimer.h>
 #include <linux/suspend.h>
-#include <linux/earlysuspend.h>
 
 #include <mach/htc_gauge.h>
 #include <mach/htc_charger.h>
@@ -135,7 +134,6 @@ static int critical_alarm_level_set;
 struct wake_lock voltage_alarm_wake_lock;
 struct wake_lock batt_shutdown_wake_lock;
 
-static struct early_suspend early_suspend;
 static int screen_state;
 static int pre_screen_state;
 #ifdef CONFIG_HTC_BATT_ALARM
@@ -2632,26 +2630,6 @@ static struct kobj_type htc_batt_ktype = {
 	.release = htc_batt_kobject_release,
 };
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void htc_battery_early_suspend(struct early_suspend *h)
-{
-	htc_batt_info.state |= STATE_EARLY_SUSPEND;
-	screen_state = 0;
-#ifdef CONFIG_HTC_BATT_ALARM
-	batt_set_voltage_alarm_mode(BATT_ALARM_DISABLE_MODE);
-#endif
-}
-
-static void htc_battery_late_resume(struct early_suspend *h)
-{
-	htc_batt_info.state &= ~STATE_EARLY_SUSPEND;
-	screen_state = 1;
-#ifdef CONFIG_HTC_BATT_ALARM
-	batt_set_voltage_alarm_mode(BATT_ALARM_CRITICAL_MODE);
-#endif
-}
-#endif 
-
 #define CHECH_TIME_TOLERANCE_MS	(1000)
 static int htc_battery_prepare(struct device *dev)
 {
@@ -2927,14 +2905,6 @@ static int htc_battery_probe(struct platform_device *pdev)
 	}
 #ifdef CONFIG_DUTY_CYCLE_LIMIT
 	chg_limit_timer_sub_mask &= chg_limit_active_mask;
-#endif
-
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN - 1;
-	early_suspend.suspend = htc_battery_early_suspend;
-	early_suspend.resume = htc_battery_late_resume;
-	register_early_suspend(&early_suspend);
 #endif
 
 htc_batt_timer.time_out = BATT_TIMER_UPDATE_TIME;

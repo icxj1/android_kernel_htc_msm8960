@@ -947,7 +947,7 @@ struct dd_pkt_filter_s{
 	char pattern[256];
 };
 
-extern void dhd_htc_wake_lock_timeout(dhd_pub_t *pub, int sec);
+//extern void dhd_htc_wake_lock_timeout(dhd_pub_t *pub, int sec);
 extern bool dhd_check_ap_mode_set(dhd_pub_t *dhd);
 extern int wl_android_black_list_match(char *ea);
 extern int dhd_os_set_packet_filter(dhd_pub_t *dhdp, int val);

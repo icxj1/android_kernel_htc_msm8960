@@ -10716,7 +10716,7 @@ wl_cfg80211_event(struct net_device *ndev, const wl_event_msg_t * e, void *data)
 {
 	u32 event_type = ntoh32(e->event_type);
 	struct wl_priv *wl = wlcfg_drv_priv;
-	wl_iw_t *iw = *(wl_iw_t **)netdev_priv(ndev);
+	//wl_iw_t *iw = *(wl_iw_t **)netdev_priv(ndev);
 
 #if (WL_DBG_LEVEL > 0)
 	s8 *estr = (event_type <= sizeof(wl_dbg_estr) / WL_DBG_ESTR_MAX - 1) ?
@@ -10727,7 +10727,7 @@ wl_cfg80211_event(struct net_device *ndev, const wl_event_msg_t * e, void *data)
 	if (event_type == WLC_E_PFN_NET_FOUND) {
 		WL_DBG((" PNOEVENT: PNO_NET_FOUND\n"));
 #ifdef CUSTOMER_HW_ONE
-		WAKE_LOCK_TIMEOUT(iw->pub, 30);
+//		WAKE_LOCK_TIMEOUT(iw->pub, 30);
 #endif
 	}
 	else if (event_type == WLC_E_PFN_NET_LOST) {

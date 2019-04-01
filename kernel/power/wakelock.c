@@ -17,23 +17,18 @@
 #include <linux/rbtree.h>
 #include <linux/slab.h>
 
-#define WL_NUMBER_LIMIT	100
-#define WL_GC_COUNT_MAX	100
-#define WL_GC_TIME_SEC	300
-
 static DEFINE_MUTEX(wakelocks_lock);
 
 struct wakelock {
 	char			*name;
 	struct rb_node		node;
 	struct wakeup_source	ws;
+#ifdef CONFIG_PM_WAKELOCKS_GC
 	struct list_head	lru;
+#endif
 };
 
 static struct rb_root wakelocks_tree = RB_ROOT;
-static LIST_HEAD(wakelocks_lru_list);
-static unsigned int number_of_wakelocks;
-static unsigned int wakelocks_gc_count;
 
 ssize_t pm_show_wakelocks(char *buf, bool show_active)
 {
@@ -57,6 +52,84 @@ ssize_t pm_show_wakelocks(char *buf, bool show_active)
 	mutex_unlock(&wakelocks_lock);
 	return (str - buf);
 }
+
+#if CONFIG_PM_WAKELOCKS_LIMIT > 0
+static unsigned int number_of_wakelocks;
+
+static inline bool wakelocks_limit_exceeded(void)
+{
+	return number_of_wakelocks > CONFIG_PM_WAKELOCKS_LIMIT;
+}
+
+static inline void increment_wakelocks_number(void)
+{
+	number_of_wakelocks++;
+}
+
+static inline void decrement_wakelocks_number(void)
+{
+	number_of_wakelocks--;
+}
+#else /* CONFIG_PM_WAKELOCKS_LIMIT = 0 */
+static inline bool wakelocks_limit_exceeded(void) { return false; }
+static inline void increment_wakelocks_number(void) {}
+static inline void decrement_wakelocks_number(void) {}
+#endif /* CONFIG_PM_WAKELOCKS_LIMIT */
+
+#ifdef CONFIG_PM_WAKELOCKS_GC
+#define WL_GC_COUNT_MAX	100
+#define WL_GC_TIME_SEC	300
+
+static LIST_HEAD(wakelocks_lru_list);
+static unsigned int wakelocks_gc_count;
+
+static inline void wakelocks_lru_add(struct wakelock *wl)
+{
+	list_add(&wl->lru, &wakelocks_lru_list);
+}
+
+static inline void wakelocks_lru_most_recent(struct wakelock *wl)
+{
+	list_move(&wl->lru, &wakelocks_lru_list);
+}
+
+static void wakelocks_gc(void)
+{
+	struct wakelock *wl, *aux;
+	ktime_t now;
+
+	if (++wakelocks_gc_count <= WL_GC_COUNT_MAX)
+		return;
+
+	now = ktime_get();
+	list_for_each_entry_safe_reverse(wl, aux, &wakelocks_lru_list, lru) {
+		u64 idle_time_ns;
+		bool active;
+
+		spin_lock_irq(&wl->ws.lock);
+		idle_time_ns = ktime_to_ns(ktime_sub(now, wl->ws.last_time));
+		active = wl->ws.active;
+		spin_unlock_irq(&wl->ws.lock);
+
+		if (idle_time_ns < ((u64)WL_GC_TIME_SEC * NSEC_PER_SEC))
+			break;
+
+		if (!active) {
+			wakeup_source_remove(&wl->ws);
+			rb_erase(&wl->node, &wakelocks_tree);
+			list_del(&wl->lru);
+			kfree(wl->name);
+			kfree(wl);
+			decrement_wakelocks_number();
+		}
+	}
+	wakelocks_gc_count = 0;
+}
+#else /* !CONFIG_PM_WAKELOCKS_GC */
+static inline void wakelocks_lru_add(struct wakelock *wl) {}
+static inline void wakelocks_lru_most_recent(struct wakelock *wl) {}
+static inline void wakelocks_gc(void) {}
+#endif /* !CONFIG_PM_WAKELOCKS_GC */
 
 static struct wakelock *wakelock_lookup_add(const char *name, size_t len,
 					    bool add_if_not_found)
@@ -85,7 +158,7 @@ static struct wakelock *wakelock_lookup_add(const char *name, size_t len,
 	if (!add_if_not_found)
 		return ERR_PTR(-EINVAL);
 
-	if (number_of_wakelocks > WL_NUMBER_LIMIT)
+	if (wakelocks_limit_exceeded())
 		return ERR_PTR(-ENOSPC);
 
 	/* Not found, we have to add a new one. */
@@ -102,8 +175,8 @@ static struct wakelock *wakelock_lookup_add(const char *name, size_t len,
 	wakeup_source_add(&wl->ws);
 	rb_link_node(&wl->node, parent, node);
 	rb_insert_color(&wl->node, &wakelocks_tree);
-	list_add(&wl->lru, &wakelocks_lru_list);
-	number_of_wakelocks++;
+	wakelocks_lru_add(wl);
+	increment_wakelocks_number();
 	return wl;
 }
 
@@ -118,57 +191,6 @@ int pm_wake_lock(const char *buf)
 	while (*str && !isspace(*str))
 		str++;
 
-<<<<<<< HEAD
-static bool is_suspend_sys_sync_waiting;
-static void suspend_sys_sync_handler(unsigned long);
-static DEFINE_TIMER(suspend_sys_sync_timer, suspend_sys_sync_handler, 0, 0);
-static void suspend_sys_sync(struct work_struct *work)
-{
-	if (debug_mask & DEBUG_SUSPEND)
-		pr_info("PM: Syncing filesystems...\n");
-
-	sys_sync();
-
-	if (debug_mask & DEBUG_SUSPEND)
-		pr_info("sync done.\n");
-
-	spin_lock(&suspend_sys_sync_lock);
-	suspend_sys_sync_count--;
-	if (is_suspend_sys_sync_waiting && (suspend_sys_sync_count == 0)) {
-		complete(&suspend_sys_sync_comp);
-		del_timer(&suspend_sys_sync_timer);
-	}
-	spin_unlock(&suspend_sys_sync_lock);
-}
-static DECLARE_WORK(suspend_sys_sync_work, suspend_sys_sync);
-
-void suspend_sys_sync_queue(void)
-{
-	int ret;
-
-	spin_lock(&suspend_sys_sync_lock);
-	ret = queue_work(suspend_sys_sync_work_queue, &suspend_sys_sync_work);
-	if (ret)
-		suspend_sys_sync_count++;
-	spin_unlock(&suspend_sys_sync_lock);
-}
-
-static bool suspend_sys_sync_abort;
-/* value should be less then half of input event wake lock timeout value
- * which is currently set to 5*HZ (see drivers/input/evdev.c)
- */
-#define SUSPEND_SYS_SYNC_TIMEOUT (HZ/4)
-static void suspend_sys_sync_handler(unsigned long arg)
-{
-	if (suspend_sys_sync_count == 0) {
-		complete(&suspend_sys_sync_comp);
-	} else if (has_wake_lock(WAKE_LOCK_SUSPEND)) {
-		suspend_sys_sync_abort = true;
-		complete(&suspend_sys_sync_comp);
-	} else {
-		mod_timer(&suspend_sys_sync_timer, jiffies +
-				SUSPEND_SYS_SYNC_TIMEOUT);
-=======
 	len = str - buf;
 	if (!len)
 		return -EINVAL;
@@ -178,50 +200,9 @@ static void suspend_sys_sync_handler(unsigned long arg)
 		ret = kstrtou64(skip_spaces(str), 10, &timeout_ns);
 		if (ret)
 			return -EINVAL;
->>>>>>> fbadbb7a59e... PM / Sleep: Add user space interface for manipulating wakeup sources, v3
 	}
 
-<<<<<<< HEAD
-int suspend_sys_sync_wait(void)
-{
-	suspend_sys_sync_abort = false;
-
-	if (suspend_sys_sync_count != 0) {
-		mod_timer(&suspend_sys_sync_timer, jiffies +
-				SUSPEND_SYS_SYNC_TIMEOUT);
-		is_suspend_sys_sync_waiting = true;
-		wait_for_completion(&suspend_sys_sync_comp);
-		is_suspend_sys_sync_waiting = false;
-	}
-	if (suspend_sys_sync_abort) {
-		pr_info("suspend aborted....while waiting for sys_sync\n");
-		return -EAGAIN;
-	}
-
-	return 0;
-}
-
-static void suspend_backoff(void)
-{
-	pr_info("suspend: too many immediate wakeups, back off\n");
-	wake_lock_timeout(&suspend_backoff_lock,
-			  msecs_to_jiffies(SUSPEND_BACKOFF_INTERVAL));
-}
-
-static void suspend(struct work_struct *work)
-{
-	int ret;
-	int entry_event_num;
-	struct timespec ts_entry, ts_exit;
-
-	if (has_wake_lock(WAKE_LOCK_SUSPEND)) {
-		if (debug_mask & DEBUG_SUSPEND)
-			pr_info("suspend: abort suspend\n");
-		return;
-	}
-=======
 	mutex_lock(&wakelocks_lock);
->>>>>>> fbadbb7a59e... PM / Sleep: Add user space interface for manipulating wakeup sources, v3
 
 	wl = wakelock_lookup_add(buf, len, true);
 	if (IS_ERR(wl)) {
@@ -237,40 +218,11 @@ static void suspend(struct work_struct *work)
 		__pm_stay_awake(&wl->ws);
 	}
 
-	list_move(&wl->lru, &wakelocks_lru_list);
+	wakelocks_lru_most_recent(wl);
 
  out:
 	mutex_unlock(&wakelocks_lock);
 	return ret;
-}
-
-static void wakelocks_gc(void)
-{
-	struct wakelock *wl, *aux;
-	ktime_t now = ktime_get();
-
-	list_for_each_entry_safe_reverse(wl, aux, &wakelocks_lru_list, lru) {
-		u64 idle_time_ns;
-		bool active;
-
-		spin_lock_irq(&wl->ws.lock);
-		idle_time_ns = ktime_to_ns(ktime_sub(now, wl->ws.last_time));
-		active = wl->ws.active;
-		spin_unlock_irq(&wl->ws.lock);
-
-		if (idle_time_ns < ((u64)WL_GC_TIME_SEC * NSEC_PER_SEC))
-			break;
-
-		if (!active) {
-			wakeup_source_remove(&wl->ws);
-			rb_erase(&wl->node, &wakelocks_tree);
-			list_del(&wl->lru);
-			kfree(wl->name);
-			kfree(wl);
-			number_of_wakelocks--;
-		}
-	}
-	wakelocks_gc_count = 0;
 }
 
 int pm_wake_unlock(const char *buf)
@@ -297,9 +249,9 @@ int pm_wake_unlock(const char *buf)
 		goto out;
 	}
 	__pm_relax(&wl->ws);
-	list_move(&wl->lru, &wakelocks_lru_list);
-	if (++wakelocks_gc_count > WL_GC_COUNT_MAX)
-		wakelocks_gc();
+
+	wakelocks_lru_most_recent(wl);
+	wakelocks_gc();
 
  out:
 	mutex_unlock(&wakelocks_lock);

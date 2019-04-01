@@ -511,7 +511,7 @@ static ssize_t autosleep_store(struct kobject *kobj,
 	int error;
 
 	if (state == PM_SUSPEND_ON
-	    && !(strncmp(buf, "off", 3) && strncmp(buf, "off\n", 4)))
+	    && strcmp(buf, "off") && strcmp(buf, "off\n"))
 		return -EINVAL;
 
 	error = pm_autosleep_set_state(state);
@@ -607,8 +607,6 @@ power_attr(wake_unlock);
 #endif
 
 static struct attribute *g[] = {
-	&touch_event_attr.attr,
-	&touch_event_timer_attr.attr,
 	&state_attr.attr,
 #ifdef CONFIG_PM_TRACE
 	&pm_trace_attr.attr,
@@ -617,6 +615,8 @@ static struct attribute *g[] = {
 #ifdef CONFIG_PM_SLEEP
 	&pm_async_attr.attr,
 	&wakeup_count_attr.attr,
+	&touch_event_attr.attr,
+	&touch_event_timer_attr.attr,
 #ifdef CONFIG_PM_AUTOSLEEP
 	&autosleep_attr.attr,
 #endif
@@ -665,7 +665,6 @@ static int __init pm_init(void)
 	hrtimer_init(&tc_ev_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	tc_ev_timer.function = &tc_ev_stop;
 	tc_ev_processed = 1;
-
 
 	power_kobj = kobject_create_and_add("power", NULL);
 	if (!power_kobj)
