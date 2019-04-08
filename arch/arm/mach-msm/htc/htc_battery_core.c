@@ -624,7 +624,11 @@ static struct device_attribute htc_set_delta_attrs[] = {
 static struct device_attribute htc_battery_rt_attrs[] = {
 	__ATTR(batt_vol_now, S_IRUGO, htc_battery_rt_attr_show, NULL),
 	__ATTR(batt_current_now, S_IRUGO, htc_battery_rt_attr_show, NULL),
+#if defined(CONFIG_HTC_BATT_CORE_TEMP)
+	__ATTR(temp, S_IRUGO, htc_battery_rt_attr_show, NULL),
+#else
 	__ATTR(batt_temp_now, S_IRUGO, htc_battery_rt_attr_show, NULL),
+#endif
 	__ATTR(pj_exist_now, S_IRUGO, htc_battery_rt_attr_show, NULL),
 	__ATTR(pj_vol_now, S_IRUGO, htc_battery_rt_attr_show, NULL),
 	__ATTR(voltage_now, S_IRUGO, htc_battery_rt_attr_show, NULL),

@@ -21,6 +21,11 @@ config HTC_BATT_CORE
 	default n
 	bool "HTC battery core driver"
 
+config HTC_BATT_CORE_TEMP
+	depends on HTC_BATT_CORE
+	default n
+	bool "use filename temp instead of batt_temp_now"
+
 config HTC_BATT_8960
 	depends on HTC_BATT_CORE
 	default n
