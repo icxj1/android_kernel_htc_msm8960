@@ -615,8 +615,6 @@ static struct attribute *g[] = {
 #ifdef CONFIG_PM_SLEEP
 	&pm_async_attr.attr,
 	&wakeup_count_attr.attr,
-	&touch_event_attr.attr,
-	&touch_event_timer_attr.attr,
 #ifdef CONFIG_PM_AUTOSLEEP
 	&autosleep_attr.attr,
 #endif
@@ -624,6 +622,8 @@ static struct attribute *g[] = {
 	&wake_lock_attr.attr,
 	&wake_unlock_attr.attr,
 #endif
+	&touch_event_attr.attr,
+	&touch_event_timer_attr.attr,
 #ifdef CONFIG_PM_DEBUG
 	&pm_test_attr.attr,
 #endif
