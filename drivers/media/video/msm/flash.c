@@ -436,7 +436,7 @@ static int msm_camera_flash_pwm(
 	if (!flash_pwm) {
 		flash_pwm = pwm_request(pwm->channel, "camera-flash");
 		if (flash_pwm == NULL || IS_ERR(flash_pwm)) {
-			pr_err("%s: FAIL pwm_request(): flash_pwm=%pK\n",
+			pr_err("%s: FAIL pwm_request(): flash_pwm=%p\n",
 			       __func__, flash_pwm);
 			flash_pwm = NULL;
 			return -ENXIO;

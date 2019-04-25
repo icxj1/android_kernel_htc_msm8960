@@ -1045,7 +1045,7 @@ static int msm_camera_v4l2_s_ctrl(struct file *f, void *pctx,
 	mutex_lock(&pcam->vid_lock);
 	switch (ctrl->id) {
 	case MSM_V4L2_PID_MMAP_INST:
-		D("%s: mmap_inst=(0x%pK, %d)\n",
+		D("%s: mmap_inst=(0x%p, %d)\n",
 			 __func__, pcam_inst, pcam_inst->my_index);
 		pcam_inst->is_mem_map_inst = 1;
 		break;
@@ -1091,7 +1091,7 @@ static int msm_camera_v4l2_reqbufs(struct file *f, void *pctx,
 	}
 	if (!pb->count) {
 		
-		pr_info("%s Inst %pK freeing buffer offsets array",
+		pr_info("%s Inst %p freeing buffer offsets array",
 			__func__, pcam_inst);
 		for (j = 0 ; j < pcam_inst->buf_count ; j++) {
 			kfree(pcam_inst->buf_offset[j]);
@@ -1104,7 +1104,7 @@ static int msm_camera_v4l2_reqbufs(struct file *f, void *pctx,
 			pcam_inst->vbqueue_initialized = 0;
 		}
 	} else {
-		pr_info("%s Inst %pK Allocating buf_offset array",
+		pr_info("%s Inst %p Allocating buf_offset array",
 			__func__, pcam_inst);
 		
 		pcam_inst->buf_offset = (struct msm_cam_buf_offset **)
@@ -1163,7 +1163,7 @@ static int msm_camera_v4l2_qbuf(struct file *f, void *pctx,
 	pcam_inst = container_of(f->private_data,
 		struct msm_cam_v4l2_dev_inst, eventHandle);
 
-	D("%s Inst=%pK, mode=%d, idx=%d\n", __func__, pcam_inst,
+	D("%s Inst=%p, mode=%d, idx=%d\n", __func__, pcam_inst,
 		pcam_inst->image_mode, pb->index);
 	WARN_ON(pctx != f->private_data);
 
@@ -1238,7 +1238,7 @@ static int msm_camera_v4l2_streamon(struct file *f, void *pctx,
 	pcam_inst = container_of(f->private_data,
 		struct msm_cam_v4l2_dev_inst, eventHandle);
 
-	D("%s Inst %pK\n", __func__, pcam_inst);
+	D("%s Inst %p\n", __func__, pcam_inst);
 	WARN_ON(pctx != f->private_data);
 	mutex_lock(&pcam->vid_lock);
 	mutex_lock(&pcam_inst->inst_lock);
@@ -1275,7 +1275,7 @@ static int msm_camera_v4l2_streamoff(struct file *f, void *pctx,
 	pcam_inst = container_of(f->private_data,
 		struct msm_cam_v4l2_dev_inst, eventHandle);
 
-	D("%s Inst %pK\n", __func__, pcam_inst);
+	D("%s Inst %p\n", __func__, pcam_inst);
 	WARN_ON(pctx != f->private_data);
 
 	if ((buf_type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) &&
@@ -1425,7 +1425,7 @@ static int msm_camera_v4l2_s_fmt_cap(struct file *f, void *pctx,
 		struct msm_cam_v4l2_dev_inst, eventHandle);
 
 	D("%s\n", __func__);
-	D("%s, inst=0x%x,idx=%d,priv = 0x%pK\n",
+	D("%s, inst=0x%x,idx=%d,priv = 0x%p\n",
 		__func__, (u32)pcam_inst, pcam_inst->my_index,
 		(void *)pfmt->fmt.pix.priv);
 	WARN_ON(pctx != f->private_data);
@@ -1462,7 +1462,7 @@ static int msm_camera_v4l2_s_fmt_cap_mplane(struct file *f, void *pctx,
 	pcam_inst = container_of(f->private_data,
 			struct msm_cam_v4l2_dev_inst, eventHandle);
 
-	D("%s Inst %pK\n", __func__, pcam_inst);
+	D("%s Inst %p\n", __func__, pcam_inst);
 	WARN_ON(pctx != f->private_data);
 
 	pmctl = msm_camera_get_mctl(pcam->mctl_handle);
@@ -1724,7 +1724,7 @@ static int msm_cam_server_open_session(struct msm_cam_server_dev *ps,
 	ps->pcam_active[pcam->server_queue_idx] = pcam;
 	atomic_inc(&ps->number_pcam_active);
 
-	D("config pcam = 0x%pK\n", ps->pcam_active[pcam->server_queue_idx]);
+	D("config pcam = 0x%p\n", ps->pcam_active[pcam->server_queue_idx]);
 
 	
 	msm_mctl_init(pcam);
@@ -2002,7 +2002,7 @@ static int msm_open(struct file *f)
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 		if (pmctl->client) {
-			pr_info("%s: pmctl->client(%pK) not null\n", __func__, (void*)(pmctl->client));
+			pr_info("%s: pmctl->client(%p) not null\n", __func__, (void*)(pmctl->client));
 			ion_client_destroy(pmctl->client);
 			pmctl->client = NULL;
 		}
@@ -2325,7 +2325,7 @@ static int msm_close(struct file *f)
 	pcam->dev_inst_map[pcam_inst->image_mode] = NULL;
 
 	
-	pr_info("%s Inst %pK freeing buffer offsets array",__func__, pcam_inst);
+	pr_info("%s Inst %p freeing buffer offsets array",__func__, pcam_inst);
 	if (pcam_inst->buf_offset) {
 		for (i = 0 ; i < pcam_inst->buf_count ; i++)
 			kfree(pcam_inst->buf_offset[i]);
@@ -2335,7 +2335,7 @@ static int msm_close(struct file *f)
 	
 	if (pcam_inst->vbqueue_initialized)
 		vb2_queue_release(&pcam_inst->vid_bufq);
-	pr_info("%s Closing down instance %pK, [%d, %d]", __func__, pcam_inst, pcam->use_count , g_server_dev.use_count);
+	pr_info("%s Closing down instance %p, [%d, %d]", __func__, pcam_inst, pcam->use_count , g_server_dev.use_count);
 	D("%s index %d nodeid %d count %d\n", __func__, pcam_inst->my_index,
 	pcam->vnode_id, pcam->use_count);
 
