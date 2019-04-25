@@ -2600,7 +2600,7 @@ static int usb_diag_update_pid_and_serial_num(uint32_t pid, const char *snum)
 		return -ENXIO;
 	}
 
-	pr_debug("%s: dload:%pK pid:%x serial_num:%s\n",
+	pr_debug("%s: dload:%p pid:%x serial_num:%s\n",
 				__func__, dload, pid, snum);
 	/* update pid */
 	dload->magic_struct.pid = PID_MAGIC_ID;

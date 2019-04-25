@@ -1877,7 +1877,7 @@ static int usb_diag_update_pid_and_serial_num(uint32_t pid, const char *snum)
 		return -ENXIO;
 	}
 
-	pr_debug("%s: dload:%pK pid:%x serial_num:%s\n",
+	pr_debug("%s: dload:%p pid:%x serial_num:%s\n",
 				__func__, dload, pid, snum);
 
 	dload->magic_struct.pid = PID_MAGIC_ID;
@@ -3183,7 +3183,7 @@ static int g_sensor_power_LPM(int on)
 	mutex_lock(&sensor_lock);
 
 	printk(KERN_DEBUG "[GSNR][BMA250_BOSCH] %s, on = %d, "
-			  "g_sensor_vreg_8038_l9 = 0x%pK\n",
+			  "g_sensor_vreg_8038_l9 = 0x%p\n",
 			  __func__, on, g_sensor_vreg_8038_l9);
 
 	if (g_sensor_vreg_8038_l9 == NULL) {
@@ -3247,7 +3247,7 @@ static int compass_power_LPM(int on)
 	mutex_lock(&sensor_lock);
 
 	printk(KERN_DEBUG "[COMP][AKM8963] %s, on = %d, "
-			  "compass_vreg_8038_l9 = 0x%pK\n",
+			  "compass_vreg_8038_l9 = 0x%p\n",
 			  __func__, on, compass_vreg_8038_l9);
 
 	if (compass_vreg_8038_l9 == NULL) {
@@ -3307,7 +3307,7 @@ static int gyro_power_LPM(int on)
 	mutex_lock(&sensor_lock);
 
 	printk(KERN_DEBUG "[GYRO][R3GD20] %s, on = %d, "
-			  "gyro_vreg_8038_l9 = 0x%pK\n",
+			  "gyro_vreg_8038_l9 = 0x%p\n",
 			  __func__, on, gyro_vreg_8038_l9);
 
 	if (gyro_vreg_8038_l9 == NULL) {
@@ -3393,7 +3393,7 @@ static int mpu3050_sensor_power_LPM(int on)
 	mutex_lock(&sensor_lock);
 
 	printk(KERN_DEBUG "[MPU][MPL3.3.7] %s, on = %d, "
-			  "motion_sensor_vreg_8038_l9 = 0x%pK\n",
+			  "motion_sensor_vreg_8038_l9 = 0x%p\n",
 			  __func__, on, motion_sensor_vreg_8038_l9);
 
 	if (motion_sensor_vreg_8038_l9 == NULL) {
