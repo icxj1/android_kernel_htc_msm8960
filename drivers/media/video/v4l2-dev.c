@@ -543,12 +543,12 @@ int __video_register_device(struct video_device *vdev, int type, int nr,
 	vdev->num = nr;
 	devnode_set(vdev);
 
-	/* Should not happen since we thought this minor was free */
+	
 	WARN_ON(video_device[vdev->minor] != NULL);
 	vdev->index = get_index(vdev);
 	mutex_unlock(&videodev_lock);
 
-	/* Part 3: Initialize the character device */
+	
 	vdev->cdev = cdev_alloc();
 	if (vdev->cdev == NULL) {
 		ret = -ENOMEM;
@@ -564,7 +564,7 @@ int __video_register_device(struct video_device *vdev, int type, int nr,
 		goto cleanup;
 	}
 
-	/* Part 4: register the device with sysfs */
+	
 	vdev->dev.class = &video_class;
 	vdev->dev.devt = MKDEV(VIDEO_MAJOR, vdev->minor);
 	if (vdev->parent)
@@ -575,20 +575,18 @@ int __video_register_device(struct video_device *vdev, int type, int nr,
 		printk(KERN_ERR "%s: device_register failed\n", __func__);
 		goto cleanup;
 	}
-	/* Register the release callback that will be called when the last
-	   reference to the device goes away. */
 	vdev->dev.release = v4l2_device_release;
 
 	if (nr != -1 && nr != vdev->num && warn_if_nr_in_use)
 		printk(KERN_WARNING "%s: requested %s%d, got %s\n", __func__,
 			name_base, nr, video_device_node_name(vdev));
 
-	/* Increase v4l2_device refcount */
+	
 	if (vdev->v4l2_dev)
 		v4l2_device_get(vdev->v4l2_dev);
 
 #if defined(CONFIG_MEDIA_CONTROLLER)
-	/* Part 5: Register the entity. */
+	
 	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev &&
 	    vdev->vfl_type != VFL_TYPE_SUBDEV) {
 		vdev->entity.type = MEDIA_ENT_T_DEVNODE_V4L;

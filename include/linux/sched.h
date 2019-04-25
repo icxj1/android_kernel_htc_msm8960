@@ -1898,7 +1898,7 @@ extern int task_free_unregister(struct notifier_block *n);
 	{ clear_bit(PFA_##name, &p->atomic_flags); }
 
 /* Per-process atomic flags. */
-#define PFA_NO_NEW_PRIVS 0x00000001	/* May not gain new privileges. */
+#define PFA_NO_NEW_PRIVS 0	/* May not gain new privileges. */
 
 static inline bool task_no_new_privs(struct task_struct *p)
 {

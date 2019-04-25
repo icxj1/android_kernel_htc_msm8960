@@ -206,8 +206,8 @@ static void alarmtimer_rtc_remove_device(struct device *dev,
 
 static inline void alarmtimer_rtc_timer_init(void)
 {
-	mutex_init(&power_on_alarm_lock);
-
+        mutex_init(&power_on_alarm_lock);
+       
 	rtc_timer_init(&rtctimer, NULL, NULL);
 }
 
@@ -666,6 +666,7 @@ static enum alarmtimer_restart alarm_handle_timer(struct alarm *alarm,
 	enum alarmtimer_restart result = ALARMTIMER_NORESTART;
 
 	spin_lock_irqsave(&ptr->it_lock, flags);
+
 	if ((ptr->it_sigev_notify & ~SIGEV_THREAD_ID) != SIGEV_NONE) {
 		if (posix_timer_event(ptr, 0) != 0)
 			ptr->it_overrun++;

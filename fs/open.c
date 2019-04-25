@@ -644,10 +644,23 @@ static inline int __get_file_write_access(struct inode *inode,
 	return error;
 }
 
-static struct file *__dentry_open(struct dentry *dentry, struct vfsmount *mnt,
-					struct file *f,
-					int (*open)(struct inode *, struct file *),
-					const struct cred *cred)
+int open_check_o_direct(struct file *f)
+{
+	/* NB: we're sure to have correct a_ops only after f_op->open */
+	if (f->f_flags & O_DIRECT) {
+		if (!f->f_mapping->a_ops ||
+		    ((!f->f_mapping->a_ops->direct_IO) &&
+		    (!f->f_mapping->a_ops->get_xip_mem))) {
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+
+static struct file *do_dentry_open(struct dentry *dentry, struct vfsmount *mnt,
+				   struct file *f,
+				   int (*open)(struct inode *, struct file *),
+				   const struct cred *cred)
 {
 	static const struct file_operations empty_fops = {};
 	struct inode *inode;
@@ -702,16 +715,6 @@ static struct file *__dentry_open(struct dentry *dentry, struct vfsmount *mnt,
 
 	file_ra_state_init(&f->f_ra, f->f_mapping->host->i_mapping);
 
-	/* NB: we're sure to have correct a_ops only after f_op->open */
-	if (f->f_flags & O_DIRECT) {
-		if (!f->f_mapping->a_ops ||
-		    ((!f->f_mapping->a_ops->direct_IO) &&
-		    (!f->f_mapping->a_ops->get_xip_mem))) {
-			fput(f);
-			f = ERR_PTR(-EINVAL);
-		}
-	}
-
 	return f;
 
 cleanup_all:
@@ -736,6 +739,22 @@ cleanup_file:
 	dput(dentry);
 	mntput(mnt);
 	return ERR_PTR(error);
+}
+
+static struct file *__dentry_open(struct dentry *dentry, struct vfsmount *mnt,
+				struct file *f,
+				int (*open)(struct inode *, struct file *),
+				const struct cred *cred)
+{
+	struct file *res = do_dentry_open(dentry, mnt, f, open, cred);
+	if (!IS_ERR(res)) {
+		int error = open_check_o_direct(f);
+		if (error) {
+			fput(res);
+			res = ERR_PTR(error);
+		}
+	}
+	return res;
 }
 
 /**
@@ -777,6 +796,31 @@ out_err:
 	goto out;
 }
 EXPORT_SYMBOL_GPL(lookup_instantiate_filp);
+
+/**
+ * finish_open - finish opening a file
+ * @file: file pointer
+ * @dentry: pointer to dentry
+ * @open: open callback
+ *
+ * This can be used to finish opening a file passed to i_op->atomic_open().
+ *
+ * If the open callback is set to NULL, then the standard f_op->open()
+ * filesystem callback is substituted.
+ */
+int finish_open(struct file *file, struct dentry *dentry,
+		int (*open)(struct inode *, struct file *))
+{
+	struct file *res;
+
+	res = do_dentry_open(dentry, file->f_path.mnt, file, open, current_cred());
+	if (!IS_ERR(res)) {
+		return 0;
+	}
+
+	return PTR_ERR(res);
+}
+EXPORT_SYMBOL(finish_open);
 
 /**
  * nameidata_to_filp - convert a nameidata to an open filp.
@@ -880,7 +924,7 @@ static inline int build_open_flags(int flags, umode_t mode, struct open_flags *o
 	int lookup_flags = 0;
 	int acc_mode;
 
-	if (flags & O_CREAT)
+	if (flags & (O_CREAT | __O_TMPFILE))
 		op->mode = (mode & S_IALLUGO) | S_IFREG;
 	else
 		op->mode = 0;
@@ -897,11 +941,17 @@ static inline int build_open_flags(int flags, umode_t mode, struct open_flags *o
 	if (flags & __O_SYNC)
 		flags |= O_DSYNC;
 
-	/*
-	 * If we have O_PATH in the open flag. Then we
-	 * cannot have anything other than the below set of flags
-	 */
-	if (flags & O_PATH) {
+	if (flags & __O_TMPFILE) {
+		if ((flags & O_TMPFILE_MASK) != O_TMPFILE)
+			return -EINVAL;
+		acc_mode = MAY_OPEN | ACC_MODE(flags);
+		if (!(acc_mode & MAY_WRITE))
+			return -EINVAL;
+	} else if (flags & O_PATH) {
+		/*
+		 * If we have O_PATH in the open flag. Then we
+		 * cannot have anything other than the below set of flags
+		 */
 		flags &= O_DIRECTORY | O_NOFOLLOW | O_PATH;
 		acc_mode = 0;
 	} else {
