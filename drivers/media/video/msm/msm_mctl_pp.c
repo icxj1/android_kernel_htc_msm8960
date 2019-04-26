@@ -70,7 +70,7 @@ static int msm_mctl_pp_buf_divert(
 	
 	isp_event->isp_data.div_frame = *div;
 
-	D("%s inst=%pK, img_mode=%d, frame_id=%d\n", __func__,
+	D("%s inst=%p, img_mode=%d, frame_id=%d\n", __func__,
 		pcam_inst, pcam_inst->image_mode, div->frame.frame_id);
 	v4l2_event_queue(
 		pmctl->config_device->config_stat_event_queue.pvdev,
@@ -185,13 +185,13 @@ static struct msm_cam_v4l2_dev_inst *msm_mctl_get_pcam_inst_for_divert(
 			pcam->mctl_node.dev_inst_map[image_mode]->my_index;
 			pcam_inst = pcam->mctl_node.dev_inst[idx];
 			*node_type = MCTL_NODE;
-			D("%s Found instance %pK in mctl node device\n",
+			D("%s Found instance %p in mctl node device\n",
 				__func__, pcam_inst);
 		} else if (pcam->dev_inst_map[image_mode]) {
 			idx = pcam->dev_inst_map[image_mode]->my_index;
 			pcam_inst = pcam->dev_inst[idx];
 			*node_type = VIDEO_NODE;
-			D("%s Found instance %pK in video device",
+			D("%s Found instance %p in video device",
 				__func__, pcam_inst);
 		} else
 			pr_err("%s Invalid image mode %d. Return NULL\n",
@@ -844,7 +844,7 @@ int msm_mctl_pp_reserve_free_frame(
 			rc = -EFAULT;
 		}
 	}
-	D("%s: reserve free buf got buffer %d from %pK rc = %d, phy = 0x%x",
+	D("%s: reserve free buf got buffer %d from %p rc = %d, phy = 0x%x",
 		__func__, frame.frame.buf_idx,
 		pcam_inst, rc, free_buf.ch_paddr[0]);
 	return rc;
@@ -900,7 +900,7 @@ int msm_mctl_set_pp_key(struct msm_cam_media_controller *p_mctl,
 			arg, sizeof(p_mctl->pp_info.pp_key)))
 		rc = -EFAULT;
 	else
-		D("%s: mctl=0x%pK, pp_key_setting=0x%x",
+		D("%s: mctl=0x%p, pp_key_setting=0x%x",
 			__func__, p_mctl, p_mctl->pp_info.pp_key);
 	spin_unlock_irqrestore(&p_mctl->pp_info.lock, flags);
 	return rc;

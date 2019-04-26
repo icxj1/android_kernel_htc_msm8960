@@ -101,7 +101,7 @@ void msm_io_memcpy_toio(void __iomem *dest_addr,
 		if (s)
 			writel_relaxed(*s++, d++);
 		else {
-			pr_err("%s: invalid address %pK, break", __func__, s);
+			pr_err("%s: invalid address %p, break", __func__, s);
 			break;
 		}
 		
@@ -114,7 +114,7 @@ void msm_io_dump(void __iomem *addr, int size)
 	int i;
 	u32 *p = (u32 *) addr;
 	u32 data;
-	CDBG("%s: %pK %d\n", __func__, addr, size);
+	CDBG("%s: %p %d\n", __func__, addr, size);
 	line_str[0] = '\0';
 	p_str = line_str;
 	for (i = 0; i < size/4; i++) {
@@ -137,12 +137,12 @@ void msm_io_dump(void __iomem *addr, int size)
 
 void msm_io_memcpy(void __iomem *dest_addr, void __iomem *src_addr, u32 len)
 {
-	CDBG("%s: %pK %pK %d\n", __func__, dest_addr, src_addr, len);
+	CDBG("%s: %p %p %d\n", __func__, dest_addr, src_addr, len);
 	if (dest_addr && src_addr) {
 		msm_io_memcpy_toio(dest_addr, src_addr, len / 4);
 		msm_io_dump(dest_addr, len);
 	} else
-		pr_err("%s: invalid address %pK %pK", __func__, dest_addr, src_addr);
+		pr_err("%s: invalid address %p %p", __func__, dest_addr, src_addr);
 }
 
 int msm_camio_clk_enable(struct msm_camera_sensor_info* sinfo, enum msm_camio_clk_type clktype)
@@ -158,7 +158,7 @@ int msm_camio_clk_enable(struct msm_camera_sensor_info* sinfo, enum msm_camio_cl
 			sinfo->main_clk = clk;
 		else
 			camio_cam_clk = clk;
-		pr_info("%s: clk(%pK) obj.name:%s", __func__, clk, camio_sctrl->sensor_i2c_client->client->dev.kobj.name);
+		pr_info("%s: clk(%p) obj.name:%s", __func__, clk, camio_sctrl->sensor_i2c_client->client->dev.kobj.name);
 		if (!IS_ERR(clk))
 			msm_camio_clk_rate_set_2(clk, camio_clk.mclk_clk_rate);
 		break;

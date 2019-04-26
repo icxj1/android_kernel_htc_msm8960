@@ -2823,7 +2823,7 @@ static int vfe32_proc_general(
 			goto proc_general_done;
 		}
 		msm_io_dump(vfe32_ctrl->vfebase, vfe32_ctrl->register_total*4);
-		CDBG("%s: %pK %pK %d\n", __func__, (void *)cmdp,
+		CDBG("%s: %p %p %d\n", __func__, (void *)cmdp,
 			vfe32_ctrl->vfebase, temp1);
 		memcpy_fromio((void *)cmdp, vfe32_ctrl->vfebase, temp1);
 		if (copy_to_user((void __user *)(cmd->value), cmdp, temp1)) {

@@ -104,9 +104,9 @@ static int check_overlap(struct hlist_head *ptype,
 		if (CONTAINS(region, &t, paddr) ||
 			CONTAINS(&t, region, paddr) ||
 			OVERLAPS(region, &t, paddr)) {
-			CDBG(" region (PHYS %pK len %ld)"
+			CDBG(" region (PHYS %p len %ld)"
 				" clashes with registered region"
-				" (paddr %pK len %ld)\n",
+				" (paddr %p len %ld)\n",
 				(void *)t.paddr, t.len,
 				(void *)region->paddr, region->len);
 			return -EINVAL;
@@ -184,7 +184,7 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 	memcpy(&region->info, info, sizeof(region->info));
 	D("%s Adding region to list with type %d\n", __func__,
 						region->info.type);
-	D("%s pmem_stats address is 0x%pK\n", __func__, ptype);
+	D("%s pmem_stats address is 0x%p\n", __func__, ptype);
 	hlist_add_head(&(region->list), ptype);
 
 	return 0;
