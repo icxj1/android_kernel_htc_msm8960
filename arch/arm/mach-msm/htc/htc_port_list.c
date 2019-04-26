@@ -306,15 +306,15 @@ static int allocate_port_list(void)
 	if (port_list == NULL) {
 		return -1;
 	} else {
-		PF_LOG_INFO("[Port list] Virtual Address of port_list: [%pK]\n", port_list);
+		PF_LOG_INFO("[Port list] Virtual Address of port_list: [%p]\n", port_list);
 		PF_LOG_INFO("[Port list] Physical Address of port_list: [%X]\n", port_list_phy_addr);
 
 		port_list[0] = packet_filter_flag;
 		#ifdef PACKET_FILTER_UDP
 		port_list_udp = port_list + 128;
 		port_list_udp[0] = packet_filter_flag;
-		PF_LOG_INFO("[Port list] Address of port_list: [%pK]\n", port_list);
-		PF_LOG_INFO("[Port list] Address of port_list_udp: [%pK]\n", port_list_udp);
+		PF_LOG_INFO("[Port list] Address of port_list: [%p]\n", port_list);
+		PF_LOG_INFO("[Port list] Address of port_list_udp: [%p]\n", port_list_udp);
 		#endif
 		return 0;
 	}
