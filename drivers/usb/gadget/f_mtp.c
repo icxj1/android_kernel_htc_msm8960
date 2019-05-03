@@ -145,7 +145,7 @@ static struct usb_ss_ep_comp_descriptor mtp_superspeed_in_comp_desc = {
 	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
 
 	/* the following 2 values can be tweaked if necessary */
-	/* .bMaxBurst =		0, */
+	.bMaxBurst =		2,
 	/* .bmAttributes =	0, */
 };
 
@@ -162,7 +162,7 @@ static struct usb_ss_ep_comp_descriptor mtp_superspeed_out_comp_desc = {
 	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
 
 	/* the following 2 values can be tweaked if necessary */
-	/* .bMaxBurst =		0, */
+	.bMaxBurst =		2,
 	/* .bmAttributes =	0, */
 };
 
@@ -1320,15 +1320,6 @@ static int mtp_bind_config(struct usb_configuration *c, bool ptp_config)
 		dev->function.hs_descriptors = hs_mtp_descs;
 		if (gadget_is_superspeed(c->cdev->gadget))
 			dev->function.ss_descriptors = ss_mtp_descs;
-	}
-
-	if (ptp_config || !mac_mtp_mode) {
-		mtp_interface_desc.bInterfaceClass =
-			USB_CLASS_STILL_IMAGE;
-		mtp_interface_desc.bInterfaceSubClass =
-			0x01;
-		mtp_interface_desc.bInterfaceProtocol =
-			0x01;
 	}
 	dev->function.bind = mtp_function_bind;
 	dev->function.unbind = mtp_function_unbind;

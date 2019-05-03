@@ -19,7 +19,6 @@
 #include <linux/usb/cdc.h>
 
 #include <linux/usb/composite.h>
-#include <linux/usb/android_composite.h>
 #include <linux/platform_device.h>
 
 #include <linux/spinlock.h>
@@ -220,6 +219,16 @@ static struct usb_cdc_mbb_desc mbb_desc = {
 	.bmNetworkCapabilities = 0x20,
 };
 
+static struct usb_cdc_ext_mbb_desc ext_mbb_desc = {
+	.bLength =	sizeof ext_mbb_desc,
+	.bDescriptorType =	USB_DT_CS_INTERFACE,
+	.bDescriptorSubType =	USB_CDC_EXT_MBB_TYPE,
+
+	.bcdMbbExtendedVersion =	cpu_to_le16(0x0100),
+	.bMaxOutstandingCmdMsges =	64,
+	.wMTU =	1500,
+};
+
 /* the default data interface has no endpoints ... */
 static struct usb_interface_descriptor mbim_data_nop_intf = {
 	.bLength =		sizeof mbim_data_nop_intf,
@@ -281,7 +290,9 @@ static struct usb_descriptor_header *mbim_fs_function[] = {
 	/* MBIM control descriptors */
 	(struct usb_descriptor_header *) &mbim_control_intf,
 	(struct usb_descriptor_header *) &mbim_header_desc,
+        (struct usb_descriptor_header *) &mbim_union_desc,
 	(struct usb_descriptor_header *) &mbb_desc,
+        (struct usb_descriptor_header *) &ext_mbb_desc,
 	(struct usb_descriptor_header *) &fs_mbim_notify_desc,
 	/* data interface, altsettings 0 and 1 */
 	(struct usb_descriptor_header *) &mbim_data_nop_intf,
@@ -326,6 +337,7 @@ static struct usb_descriptor_header *mbim_hs_function[] = {
 	(struct usb_descriptor_header *) &mbim_control_intf,
 	(struct usb_descriptor_header *) &mbim_header_desc,
 	(struct usb_descriptor_header *) &mbb_desc,
+        (struct usb_descriptor_header *) &ext_mbb_desc,
 	(struct usb_descriptor_header *) &hs_mbim_notify_desc,
 	/* data interface, altsettings 0 and 1 */
 	(struct usb_descriptor_header *) &mbim_data_nop_intf,
@@ -1443,17 +1455,6 @@ mbim_bind(struct usb_configuration *c, struct usb_function *f)
 			goto fail;
 	}
 
-	/*
-	 * If MBIM is bound in a config other than the first, tell Windows
-	 * about it by returning the num as a string in the OS descriptor's
-	 * subCompatibleID field. Windows only supports up to config #4.
-	 */
-	if (c->bConfigurationValue >= 2 && c->bConfigurationValue <= 4) {
-		pr_debug("MBIM in configuration %d", c->bConfigurationValue);
-		mbim_ext_config_desc.function.subCompatibleID[0] =
-			c->bConfigurationValue + '0';
-	}
-
 	pr_info("mbim(%d): %s speed IN/%s OUT/%s NOTIFY/%s\n",
 			mbim->port_num,
 			gadget_is_dualspeed(c->cdev->gadget) ? "dual" : "full",
@@ -1492,8 +1493,6 @@ fail:
 static void mbim_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_mbim	*mbim = func_to_mbim(f);
-
-	bam_data_destroy(mbim->port_num);
 
 	if (gadget_is_superspeed(c->cdev->gadget))
 		usb_free_descriptors(f->ss_descriptors);

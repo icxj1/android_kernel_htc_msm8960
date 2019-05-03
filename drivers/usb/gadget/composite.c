@@ -1118,9 +1118,6 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 				} else {
 					cdev->desc.bcdUSB = cpu_to_le16(0x0210);
 				}
-			} else if (gadget->l1_supported) {
-				cdev->desc.bcdUSB = cpu_to_le16(0x0201);
-				DBG(cdev, "Config HS device with LPM(L1)\n");
 			}
 
 			value = min(w_length, (u16) sizeof cdev->desc);

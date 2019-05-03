@@ -613,19 +613,7 @@ static void diag_function_unbind(struct usb_configuration *c,
 		usb_free_descriptors(f->hs_descriptors);
 
 	usb_free_descriptors(f->fs_descriptors);
-
-	/*
-	 * Channel priv_usb may point to other diag function.
-	 * Clear the priv_usb only if the channel is used by the
-	 * diag dev we unbind here.
-	 */
-	if (ctxt->ch && ctxt->ch->priv_usb == ctxt)
-		ctxt->ch->priv_usb = NULL;
-	list_del(&ctxt->list_item);
-	/* Free any pending USB requests from last session */
-	spin_lock_irqsave(&ctxt->lock, flags);
-	free_reqs(ctxt);
-	spin_unlock_irqrestore(&ctxt->lock, flags);
+        ctxt->ch.priv_usb = NULL;
 }
 
 static int diag_function_bind(struct usb_configuration *c,
@@ -723,7 +711,6 @@ int diag_function_add(struct usb_configuration *c, const char *name,
 	dev->update_pid_and_serial_num = update_pid;
 	dev->cdev = c->cdev;
 	dev->function.name = _ch->name;
-	dev->function.strings = diag_strings;
 	dev->function.fs_descriptors = fs_diag_desc;
 	dev->function.hs_descriptors = hs_diag_desc;
 	dev->function.bind = diag_function_bind;
