@@ -633,7 +633,7 @@ int qmi_connect_to_service(struct qmi_handle *handle,
 			   uint32_t service_ins)
 {
 	struct msm_ipc_port_name svc_name;
-	struct msm_ipc_server_info svc_info;
+	struct msm_ipc_port_addr svc_info;
 	struct msm_ipc_addr *svc_dest_addr;
 	int rc;
 	uint32_t instance_id;
