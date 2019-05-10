@@ -2574,7 +2574,7 @@ static int sdfat_symlink(struct inode *dir, struct dentry *dentry, const char *t
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
-	struct timespec_compact ts;
+	struct timespec_compat ts;
 	FILE_ID_T fid;
 	loff_t i_pos;
 	int err;
@@ -2641,7 +2641,7 @@ static int __sdfat_mkdir(struct inode *dir, struct dentry *dentry)
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
-	struct timespec_compact ts;
+	struct timespec_compat ts;
 	FILE_ID_T fid;
 	loff_t i_pos;
 	int err;
@@ -2692,7 +2692,7 @@ static int sdfat_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	struct inode *inode = dentry->d_inode;
 	struct super_block *sb = dir->i_sb;
-	struct timespec_compact ts;
+	struct timespec_compat ts;
 	int err;
 
 	__lock_super(sb);
@@ -2733,7 +2733,7 @@ static int __sdfat_rename(struct inode *old_dir, struct dentry *old_dentry,
 {
 	struct inode *old_inode, *new_inode;
 	struct super_block *sb = old_dir->i_sb;
-	struct timespec_compact ts;
+	struct timespec_compat ts;
 	loff_t i_pos;
 	int err;
 
@@ -4806,7 +4806,7 @@ static int sdfat_read_root(struct inode *inode)
 {
 	struct super_block *sb = inode->i_sb;
 	struct sdfat_sb_info *sbi = SDFAT_SB(sb);
-	struct timespec_compact ts;
+	struct timespec_compat ts;
 	FS_INFO_T *fsi = &(sbi->fsi);
 	DIR_ENTRY_T info;
 
