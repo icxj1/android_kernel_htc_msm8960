@@ -189,7 +189,7 @@ static int htc_battery_get_charging_status(void)
 
 	switch (charger) {
 	case CHARGER_BATTERY:
-		ret = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		ret = POWER_SUPPLY_STATUS_DISCHARGING;
 		break;
 	case CHARGER_USB:
 	case CHARGER_AC:
